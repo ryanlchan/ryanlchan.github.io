@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>GPS Location Logger</title>
+    <style>
+        #error {
+            color: red;
+        }
+
+        #locationData {
+            white-space: pre;
+        }
+    </style>
+</head>
+
+<body>
+    <div>
+        <input type="text" id="courseName" placeholder="Course Name">
+        <button id="saveCourseName">Save</button>
+    </div>
+    <hr>
+    <select id="club">
+        <option value="P">P</option>
+        <option value="LW">LW</option>
+        <option value="GW">GW</option>
+        <option value="AW">AW</option>
+        <option value="PW">PW</option>
+        <option value="9i">9i</option>
+        <option value="8i">8i</option>
+        <option value="7i">7i</option>
+        <option value="6i">6i</option>
+        <option value="5i">5i</option>
+        <option value="4i">4i</option>
+        <option value="3h">3h</option>
+        <option value="3w">3w</option>
+        <option value="D">D</option>
+    </select>
+    <button id="logLocation">Log Current Stroke</button>
+    <button id="newHole">New Hole</button>
+    <button id="newRound">New Round</button>
+    <pre id="locationData"></pre>
+    <div id="error"></div>
+
+    <script>
+        var round = {
+            date: new Date().toISOString(),
+            course: "",
+            holes: [],
+        };
+        var currentHole = {
+            course: "",
+            number: 1,
+            strokes: [],
+        };
+        var currentStrokeIndex = 0;
+
+        window.onload = function () {
+            var loadedData = JSON.parse(localStorage.getItem('golfData'));
+            if (loadedData) {
+                round = loadedData;
+                var lastHole = round.holes[round.holes.length - 1];
+                if (lastHole) {
+                    currentHole = lastHole;
+                    round.holes.pop(); // Remove last hole to avoid duplication
+                    currentStrokeIndex = lastHole.strokes.length;
+                }
+                updateLocationData();
+            }
+        }
+
+        document.getElementById('saveCourseName').addEventListener('click', function () {
+            var courseName = document.getElementById('courseName').value;
+            round.course = courseName;
+            currentHole.course = courseName;
+            saveData();
+            updateLocationData();
+        });
+
+        document.getElementById('logLocation').addEventListener('click', function () {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(showPosition, showError);
+            } else {
+                document.getElementById('error').innerHTML = "Geolocation is not supported by this browser.";
+            }
+        });
+
+        document.getElementById('newHole').addEventListener('click', function () {
+            if (currentHole.strokes.length > 0) {
+                round.holes.push(currentHole);
+                currentHole = {
+                    course: round.course,
+                    number: round.holes.length + 1,
+                    strokes: [],
+                };
+                currentStrokeIndex = 0;
+                updateLocationData();
+                saveData();
+            } else {
+                document.getElementById('error').innerHTML = "Current hole is empty, cannot create a new hole.";
+            }
+        });
+
+        document.getElementById('newRound').addEventListener('click', function () {
+            round = {
+                date: new Date().toISOString(),
+                course: "",
+                holes: [],
+            };
+            currentHole = {
+                course: "",
+                number: 1,
+                strokes: [],
+            };
+            currentStrokeIndex = 0;
+            updateLocationData();
+            localStorage.removeItem('golfData');
+        });
+
+        function showPosition(position) {
+            var stroke = {
+                course: round.course,
+                index: currentStrokeIndex,
+                start: {
+                    x: position.coords.longitude,
+                    y: position.coords.latitude,
+                    crs: "EPSG:4326"
+                }
+            };
+            if (currentHole.strokes.length > 0) {
+                currentHole.strokes[currentHole.strokes.length - 1].aim = stroke.start;
+            }
+            currentHole.strokes.push(stroke);
+            currentStrokeIndex++;
+            updateLocationData();
+            saveData();
+        }
+
+        function updateLocationData() {
+            document.getElementById('locationData').textContent = JSON.stringify(Object.assign({}, round, {
+                holes: round.holes.concat(currentHole)
+            }), null, 2);
+        }
+
+        function saveData() {
+            localStorage.setItem('golfData', JSON.stringify(Object.assign({}, round, {
+                holes: round.holes.concat(currentHole)
+            })));
+        }
+
+        function showError(error) {
+            switch (error.code) {
+                case error.PERMISSION_DENIED:
+                    document.getElementById('error').innerHTML = "User denied the request for Geolocation.";
+                    break;
+                case error.POSITION_UNAVAILABLE:
+                    document.getElementById('error').innerHTML = "Location information is unavailable.";
+                    break;
+                case error.TIMEOUT:
+                    document.getElementById('error').innerHTML = "The request to get user location timed out.";
+                    break;
+                case error.UNKNOWN_ERROR:
+                    document.getElementById('error').innerHTML = "An unknown error occurred.";
+                    break;
+            }
+        }
+    </script>
+</body>
+
+</html>
