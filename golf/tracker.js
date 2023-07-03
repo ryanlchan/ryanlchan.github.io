@@ -137,6 +137,24 @@ function strokeMarkerCreate(stroke, options) {
 }
 
 /**
+ * Updates all stroke marker tooltips
+ */
+function strokeMarkerUpdate() {
+    for (const hole of round.holes) {
+        for (const stroke of hole.strokes) {
+            let marker = layerRead(strokeMarkerID(stroke))
+            if (!marker) {
+                continue
+            }
+            let tooltip = marker.getTooltip();
+            if (tooltip) {
+                tooltip.update()
+            }
+        }
+    }
+}
+
+/**
  * Create a unique ID for a Stroke
  * @param {Object} stroke 
  * @returns {String}
@@ -453,10 +471,6 @@ function handleMarkerDrag(marker, coordinate) {
         const position = marker.getLatLng();
         coordinate.x = position.lng;
         coordinate.y = position.lat;
-        let tooltip = marker.getTooltip();
-        if (tooltip) {
-            tooltip.update()
-        }
         rerender();
     });
 }
@@ -754,6 +768,7 @@ function strokeMoveViewCreate(stroke, offset) {
 function rerender() {
     roundViewUpdate();
     strokelineUpdate();
+    strokeMarkerUpdate();
     saveData();
 }
 
