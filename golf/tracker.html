@@ -9,6 +9,18 @@
         #locationData {
             white-space: pre;
         }
+        #mapid {
+            margin-bottom: 10px;
+        }
+        .buttonRow {
+            margin-bottom: 10px
+        }
+        #roundInfo {
+            display: auto;
+        }
+        .inactive {
+            display: none;
+        }
     </style>
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
 </head>
@@ -33,22 +45,30 @@
     </select>
     <button id="logLocation">Log Current Stroke</button>
     &nbsp;&nbsp;|&nbsp;&nbsp;
-    <button id="setPin">Set Pin</button>
+    <button id="holePinCreate">Set Pin</button>
     <button id="newHole">New Hole</button>
-    <button id="undoAction">Undo</button>
-    <button id="copyToClipboard">Copy to Clipboard</button>
+    <button id="undoAction">Undo</button>    
     <hr>
-    <button id="toggleRound">Edit Round Info</button>
-    <div id="roundInfo" style="display:none;">
-        <input type="text" id="courseName" placeholder="Course Name">
-        <button id="saveCourseName">Save</button>
-        <button id="newRound">New Round</button>
+    <div id="stats">
+        <p id="holeStats"></p>
+        <ul id="strokeStats"></ul>
     </div>
     <hr>
-    <pre id="locationData"></pre>
+    <div class="buttonRow">
+        <button id="toggleRound">Edit Round Info</button>
+        <button id="copyToClipboard">Copy to Clipboard</button>
+    </div>
+    <div id="roundInfo" class="inactive">
+        <input type="text" id="courseName" placeholder="Course Name">
+        <button id="roundCreate">New Round</button>
+        <pre id="locationData"></pre>
+    </div>
+    <hr>
+    
     <div id="error"></div>
 
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
     <script src="tracker.js"></script>
+    <script src="tests.js"></script>
 </body>
 </html>
