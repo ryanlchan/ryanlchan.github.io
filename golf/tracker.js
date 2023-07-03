@@ -5,11 +5,13 @@
 
 // Variables
 let mapView;
-let currentHole = defaultCurrentHole();
 let round = defaultRound();
-let currentStrokeIndex = 0;
+let currentHole = round.holes.at(-1);
+let currentStrokeIndex = currentHole.strokes.length;
 let layers = {};
 let actionStack = [];
+let currentPosition;
+let currentPositionEnabled;
 
 /**
  * ===========
@@ -310,9 +312,9 @@ function roundCreate() {
     // Reset all major data
     localStorage.removeItem("golfData");
     round = { ...defaultRound(), course: courseName };
-    currentHole = round.holes[0]
+    currentHole = round.holes.at(-1)
     currentStrokeIndex = 0;
-    updateLocationData();
+    roundViewUpdate();
     layerDeleteAll()
     saveData()
 }
@@ -495,7 +497,7 @@ function undoRun() {
         round = previousAction.round;
         currentHole = round.holes[previousAction.currentHoleNum - 1];
         currentStrokeIndex = previousAction.currentStrokeIndex;
-        updateLocationData();
+        roundViewUpdate();
         saveData();
     } else {
         document.getElementById("error").innerText = "No action to undo.";
@@ -597,15 +599,31 @@ function calculateDistance(coord1, coord2) {
 /**
  * Call a callback function with location from the browser, or a browser cache
  * @param {Function} callback 
+ * @param {*} force set to true to force retrieving a fresh location
  */
-function withLocation(callback) {
-    if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(callback,
-            showError
-        );
-    } else {
+function withLocation(callback, force) {
+    // If location is not yet tracked, turn on BG tracking + force refresh
+    if (!(currentPositionEnabled)) {
+        currentPositionUpdate()
+        force = true
+    }
+    const position = currentPositionRead();
+    if (position && !(force)) {
+        callback(position);
+    } else if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(callback, showError);
+    }
+    else {
         document.getElementById("error").innerText = "Geolocation is not supported by this browser.";
     }
+}
+
+/**
+ * Shortcut to get current position from cache
+ * @returns {GeolocationPosition}
+ */
+function currentPositionRead() {
+    return currentPosition;
 }
 
 /**
@@ -632,10 +650,37 @@ function mapViewCreate(mapid) {
     }).addTo(mapView);
 }
 
+function currentPositionUpdate() {
+    currentPositionEnabled = true;
+    withLocation(() => {
+        let watchID = navigator.geolocation.watchPosition(function (position) {
+            const markerID = "currentPosition";
+            currentPosition = position;
+            latlong = [position.coords.latitude, position.coords.longitude];
+            let currentPositionMarker = layerRead(markerID)
+            if (currentPositionMarker) {
+                // If the marker already exists, just update its position
+                currentPositionMarker.setLatLng(latlong);
+            } else {
+                // Create a new marker and add it to the map
+                currentPositionMarker = L.circleMarker(
+                    latlong,
+                    { radius: 10, fillColor: "#4A89F3", color: "#FFF", weight: 1, opacity: 0.8, fillOpacity: 0.8 }
+                );
+                layerCreate(markerID, currentPositionMarker);
+            }
+        }, showError, {
+            enableHighAccuracy: true,
+            timeout: 5000,
+            maximumAge: 1000
+        });
+    }, true);
+}
+
 /**
- * Updates the location data displayed on the page.
+ * Updates the round data displayed on the page.
  */
-function updateLocationData() {
+function roundViewUpdate() {
     const locationData = document.getElementById("locationData");
     locationData.textContent = JSON.stringify(
         { ...round },
@@ -707,7 +752,7 @@ function strokeMoveViewCreate(stroke, offset) {
  * Rerender key views based on volatile data
  */
 function rerender() {
-    updateLocationData();
+    roundViewUpdate();
     strokelineUpdate();
     saveData();
 }
@@ -765,6 +810,9 @@ function clubStrokeCreateCallback(club) {
 function clubStrokeViewToggle() {
     const el = document.getElementById("clubStrokeCreateContainer")
     el.classList.toggle("inactive");
+    if (!(currentPositionEnabled)) {
+        currentPositionUpdate()
+    }
 }
 
 /**
