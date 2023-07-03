@@ -6,11 +6,33 @@
         #error {
             color: red;
         }
+        .success {
+            background-color: #28a745;
+            border-color: #28a745;
+            color: #fff;
+        }
+        .danger {
+            color: #fff;
+            background-color: #dc3545;
+            border-color: #dc3545;
+        }
+        .dark {
+            color: #fff;
+            background-color: #343a40;
+            border-color: #343a40;
+        }
+        .secondary {
+            color: #fff;
+            background-color: #6c757d;
+            border-color: #6c757d;
+        }
         #locationData {
             white-space: pre;
         }
         #mapid {
             margin-bottom: 10px;
+            height: 500px; 
+            width: 100%;
         }
         .buttonRow {
             margin-bottom: 10px
@@ -21,29 +43,48 @@
         .inactive {
             display: none;
         }
+        button {
+            padding: 10px;
+        }
+
+        #clubStrokeCreateContainer {
+            position: fixed;
+            top: 0;
+            left: 0;
+            height: 100%;
+            width: 100%;
+            text-align: center;
+            background-color: #fff;
+            z-index: 10000;
+        }
+        #clubStrokeCreateContainer button {
+            margin: 15px;
+            width: 100px;
+            height: 100px;
+            font-weight: bold;
+            font-size: 18pt;
+        }
+        #clubStrokeCreateContainerCloseContainer {
+            width: 100%;
+            margin: 15px auto 30px auto;
+        }
+
+        #clubStrokeCreateContainerCloseContainer button {
+            width: 80%;
+            height: 50px;
+        }
+
     </style>
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
 </head>
 <body>
-    <div id="mapid" style="height: 500px;"></div>
-
-    <select id="club">
-        <option value="P">P</option>
-        <option value="LW">LW</option>
-        <option value="SW">GW</option>
-        <option value="AW">AW</option>
-        <option value="PW">PW</option>
-        <option value="9i">9i</option>
-        <option value="8i">8i</option>
-        <option value="7i">7i</option>
-        <option value="6i">6i</option>
-        <option value="5i">5i</option>
-        <option value="4i">4i</option>
-        <option value="3h">3h</option>
-        <option value="3w">3w</option>
-        <option value="D">D</option>
-    </select>
-    <button id="logLocation">Log Current Stroke</button>
+    <div id="mapid" ></div>
+    <button id="strokeAdd" class="success">Log New Stroke</button>
+    <div id="clubStrokeCreateContainer" class="inactive">
+        <div id="clubStrokeCreateContainerCloseContainer">
+            <button id="clubStrokeCreateContainerClose" class="dark">Close and go back</button>
+        </div>
+    </div>
     &nbsp;&nbsp;|&nbsp;&nbsp;
     <button id="holePinCreate">Set Pin</button>
     <button id="newHole">New Hole</button>

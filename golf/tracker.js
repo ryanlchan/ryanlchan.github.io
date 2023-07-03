@@ -21,14 +21,12 @@ let actionStack = [];
  * Shows the current position on the map and logs it as a stroke.
  * @param {Position} position - The current geolocation position.
  */
-function strokeCreate(position) {
+function strokeCreate(position, options = {}) {
     // set an undo point 
     undoCreate("strokeCreate");
 
     // Create the stroke object
-    const club = document.getElementById("club").value;
     const stroke = {
-        club,
         index: currentStrokeIndex,
         hole: currentHole.number,
         start: {
@@ -36,6 +34,7 @@ function strokeCreate(position) {
             y: position.coords.latitude,
             crs: "EPSG:4326",
         },
+        ...options
     };
     if (currentHole.pin) {
         stroke.aim = currentHole.pin;
@@ -56,7 +55,7 @@ function strokeCreate(position) {
  * @param {Number} strokeIndex 
  */
 function strokeDelete(holeNumber, strokeIndex) {
-    console.debug("Deleting stroke " + strokeIndex + " from hole " + holeNumber)
+    console.debug(`Deleting stroke ${strokeIndex} from hole ${holeNumber}`)
     let hole = round.holes.find(h => h.number === holeNumber);
     if (hole) {
         let stroke = hole.strokes[strokeIndex];
@@ -77,7 +76,7 @@ function strokeDelete(holeNumber, strokeIndex) {
 }
 
 function strokeMove(holeNumber, strokeIndex, offset) {
-    console.debug("Moving stroke " + strokeIndex + " from hole " + holeNumber + " by " + offset)
+    console.debug(`Moving stroke ${strokeIndex} from hole ${holeNumber} by ${offset}`)
     const hole = round.holes[holeNumber - 1]
     const mover = hole.strokes[strokeIndex]
     if (offset < 0) {
@@ -91,6 +90,25 @@ function strokeMove(holeNumber, strokeIndex, offset) {
     // Update the map and polylines
     rerender()
 }
+
+/**
+ * Get the distance from this stroke to the next
+ * @param {Object*} stroke 
+ */
+function strokeDistance(stroke) {
+    let distance = 0;
+    const hole = round.holes[stroke.hole - 1]
+    const following = hole.strokes[stroke.index + 1]
+    if (following) {
+        distance = calculateDistance(stroke.start, following.start);
+    } else if (hole.pin) {
+        distance = calculateDistance(stroke.start, hole.pin);
+    }
+
+    return distance
+}
+
+
 
 /**
  * Adds a stroke marker to the map.
@@ -122,7 +140,7 @@ function strokeMarkerCreate(stroke, options) {
  * @returns {String}
  */
 function strokeMarkerID(stroke) {
-    return "stroke_marker_" + stroke.index + "_hole_" + stroke.hole
+    return `stroke_marker_${stroke.index}_hole_${stroke.hole}`
 }
 
 
@@ -132,7 +150,7 @@ function strokeMarkerID(stroke) {
  */
 function strokeTooltipText(stroke) {
     const club = stroke.club;
-    const distance = Math.round(getDistance(stroke) * 10) / 10; // jesus christ I cannot believe how dumb javascript is just let me round floats
+    const distance = Math.round(strokeDistance(stroke) * 10) / 10; // jesus christ I cannot believe how dumb javascript is just let me round floats
     return `${club} (${distance}m)`
 }
 
@@ -201,7 +219,7 @@ function strokelineDeleteAll() {
  * @returns String
  */
 function strokelineID(hole) {
-    return "strokeline_hole" + hole.number
+    return `strokeline_hole_${hole.number}`
 }
 
 /**
@@ -232,27 +250,23 @@ function holePinCreate() {
     if (!currentHole) {
         return;
     }
-    if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(function (position) {
-            currentHole.pin = {
-                x: position.coords.longitude,
-                y: position.coords.latitude,
-                crs: "EPSG:4326",
-            };
-            const id = holePinID(hole);
-            layerDelete(id)
-            pinMarkerCreate(currentHole);
+    withLocation((position) => {
+        currentHole.pin = {
+            x: position.coords.longitude,
+            y: position.coords.latitude,
+            crs: "EPSG:4326",
+        };
+        const id = holePinID(currentHole);
+        layerDelete(id)
+        pinMarkerCreate(currentHole);
 
-            // Rerender views
-            rerender();
-        }, showError);
-    } else {
-        document.getElementById("error").innerText = "Geolocation is not supported by this browser.";
-    }
+        // Rerender views
+        rerender();
+    });
 }
 
 function holePinID(hole) {
-    return "hole_pin_" + hole.number
+    return `hole_pin_${hole.number}`
 }
 
 /**
@@ -316,6 +330,48 @@ function defaultRound() {
         course: "Rancho Park Golf Course",
         holes: [defaultCurrentHole()],
     };
+}
+
+/**
+ * =====
+ * Clubs
+ * =====
+ */
+
+/**
+ * Create a new stroke for a given club at current position
+ * @param {Object} position 
+ */
+function clubStrokeCreate(position, club) {
+    let options = {
+        club: club.name,
+        dispersion: club.dispersion,
+    }
+    strokeCreate(position, options)
+}
+
+/**
+ * Lookup function to get all clubs in the backend, currently static
+ * @returns {Array} 
+ */
+function clubReadAll() {
+    return [
+        { id: 1, name: "D", dispersion: "39" },
+        { id: 2, name: "3w", dispersion: "35" },
+        { id: 3, name: "3h", dispersion: "28" },
+        { id: 4, name: "4i", dispersion: "23" },
+        { id: 5, name: "5i", dispersion: "21.5" },
+        { id: 6, name: "6i", dispersion: "17" },
+        { id: 7, name: "7i", dispersion: "16" },
+        { id: 8, name: "8i", dispersion: "13.5" },
+        { id: 9, name: "9i", dispersion: "11.5" },
+        { id: 10, name: "Pw", dispersion: "10" },
+        { id: 11, name: "Aw", dispersion: "7.5" },
+        { id: 12, name: "Sw", dispersion: "6" },
+        { id: 13, name: "Lw", dispersion: "5" },
+        { id: 14, name: "P", dispersion: "0.75" },
+        { id: 15, name: "Skip", dispersion: "1", class: "secondary" },
+    ]
 }
 
 /**
@@ -427,7 +483,7 @@ function undoCreate(action) {
         currentHoleNum: currentHole.number,
         currentStrokeIndex,
     });
-    console.debug("Created a new undo point for action#" + action)
+    console.debug(`Created a new undo point for action#${action}`)
 }
 
 /**
@@ -447,56 +503,6 @@ function undoRun() {
     }
 }
 
-
-/**
- * =========
- * Distances
- * =========
- */
-
-/**
- * Calculates the distance between two coordinates in meters.
- * @param {Object} coord1 - The first coordinate object { x, y }.
- * @param {Object} coord2 - The second coordinate object { x, y }.
- * @returns {number} The distance between the coordinates in meters.
- */
-function calculateDistance(coord1, coord2) {
-    const lat1 = coord1.y;
-    const lon1 = coord1.x;
-    const lat2 = coord2.y;
-    const lon2 = coord2.x;
-    const R = 6371e3; // meters
-    const phi1 = (lat1 * Math.PI) / 180; // phi, lambda in radians
-    const phi2 = (lat2 * Math.PI) / 180;
-    const deltaPhi = ((lat2 - lat1) * Math.PI) / 180;
-    const deltaLambda = ((lon2 - lon1) * Math.PI) / 180;
-
-    const a =
-        Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
-        Math.cos(phi1) * Math.cos(phi2) * Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-    const distance = R * c; // meters
-    return distance;
-}
-
-/**
- * Get the distance from this stroke to the next
- * @param {Object*} stroke 
- */
-function getDistance(stroke) {
-    let distance = 0;
-    const hole = round.holes[stroke.hole - 1]
-    const following = hole.strokes[stroke.index + 1]
-    if (following) {
-        distance = calculateDistance(stroke.start, following.start);
-    } else if (hole.pin) {
-        distance = calculateDistance(stroke.start, hole.pin);
-    }
-
-    return distance
-}
-
 /**
  * ========
  * LayerSet
@@ -511,7 +517,7 @@ function getDistance(stroke) {
  */
 function layerCreate(id, object) {
     if (layers[id]) {
-        console.error("Layer Error: ID " + id + " already exists!")
+        console.error(`Layer Error: ID ${id} already exists!`)
         return
     }
     layers[id] = object
@@ -557,6 +563,52 @@ function layerReadAll() {
 }
 
 /**
+ * =========
+ * Utilities
+ * =========
+ */
+
+/**
+ * Calculates the distance between two coordinates in meters.
+ * @param {Object} coord1 - The first coordinate object { x, y }.
+ * @param {Object} coord2 - The second coordinate object { x, y }.
+ * @returns {number} The distance between the coordinates in meters.
+ */
+function calculateDistance(coord1, coord2) {
+    const lat1 = coord1.y;
+    const lon1 = coord1.x;
+    const lat2 = coord2.y;
+    const lon2 = coord2.x;
+    const R = 6371e3; // meters
+    const phi1 = (lat1 * Math.PI) / 180; // phi, lambda in radians
+    const phi2 = (lat2 * Math.PI) / 180;
+    const deltaPhi = ((lat2 - lat1) * Math.PI) / 180;
+    const deltaLambda = ((lon2 - lon1) * Math.PI) / 180;
+
+    const a =
+        Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
+        Math.cos(phi1) * Math.cos(phi2) * Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+    const distance = R * c; // meters
+    return distance;
+}
+
+/**
+ * Call a callback function with location from the browser, or a browser cache
+ * @param {Function} callback 
+ */
+function withLocation(callback) {
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(callback,
+            showError
+        );
+    } else {
+        document.getElementById("error").innerText = "Geolocation is not supported by this browser.";
+    }
+}
+
+/**
  * =======================
  * Views/Output formatting
  * =======================
@@ -565,11 +617,11 @@ function layerReadAll() {
 /**
  * Initialize the leaflet map and satellite baselayer
  */
-function mapViewCreate() {
-    mapView = L.map("mapid").setView([36.567383, -121.947729], 18);
+function mapViewCreate(mapid) {
+    mapView = L.map(mapid).setView([36.567383, -121.947729], 18);
     L.tileLayer("https://api.mapbox.com/styles/v1/{id}/tiles/{z}/{x}/{y}?access_token={accessToken}", {
         attribution:
-            'Map data &copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors, <a href="https://creativecommons.org/licenses/by-sa/2.0/">CC-BY-SA</a>, Imagery © <a href="https://www.mapbox.com/">Mapbox</a>',
+            'Map data &copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors, <a href="https://creativecommons.org/licenses/by-sa/2.0/">CC-BY-SA</a>, Imagery &copy; <a href="https://www.mapbox.com/">Mapbox</a>',
         maxZoom: 22,
         maxNativeZoom: 19,
         id: "mapbox/satellite-v9",
@@ -628,7 +680,7 @@ function updateStats() {
 function strokeDeleteViewCreate(stroke) {
     let link = document.createElement("button");
     link.innerHTML = "delete";
-    link.id = "stroke_" + stroke.index + "_delete"
+    link.id = `stroke_${stroke.index}_delete`
     link.addEventListener("click", (() => {
         strokeDelete(stroke.hole, stroke.index);
     }));
@@ -643,8 +695,8 @@ function strokeDeleteViewCreate(stroke) {
  */
 function strokeMoveViewCreate(stroke, offset) {
     let link = document.createElement("button");
-    link.innerHTML = "Move " + offset;
-    link.id = "stroke_" + stroke.index + "_move_" + offset
+    link.innerHTML = `Move ${offset}`;
+    link.id = `stroke_${stroke.index}_move_${offset}`
     link.addEventListener("click", (() => {
         strokeMove(stroke.hole, stroke.index, offset);
     }));
@@ -661,6 +713,61 @@ function rerender() {
 }
 
 /**
+ * Render a set of Club buttons into an HTML element based on an array of Club objects
+ * @param {Array} clubs 
+ * @param {HTMLElement} targetElement 
+ */
+const clubDataFields = ["dispersion"]
+function clubStrokeViewCreate(clubs, targetElement) {
+    clubs.forEach((clubData) => {
+        const button = document.createElement("button");
+        button.textContent = clubData.name;
+        button.id = clubData.id;
+
+        // Add additional attributes or styles to the button
+        if (clubDataFields) {
+            clubDataFields.forEach(field => {
+                if (clubData[field]) {
+                    button.setAttribute(`data-${field}`, clubData[field]);
+                }
+            });
+        }
+
+        if (clubData.style) {
+            Object.assign(button.style, clubData.style);
+        }
+
+        if (clubData.class) {
+            button.classList.add(clubData.class)
+        }
+
+        // Wire it up for action
+        button.addEventListener("click", clubStrokeCreateCallback(clubData))
+
+        targetElement.appendChild(button);
+    });
+}
+
+/**
+ * Handle a click on a club stroke create button
+ * @param {Object} club 
+ * @returns {Function}
+ */
+function clubStrokeCreateCallback(club) {
+    return (() => {
+        withLocation((position) => {
+            clubStrokeCreate(position, club);
+            clubStrokeViewToggle();
+        });
+    });
+}
+
+function clubStrokeViewToggle() {
+    const el = document.getElementById("clubStrokeCreateContainer")
+    el.classList.toggle("inactive");
+}
+
+/**
  * =========================
  * Handlers for click events
  * =========================
@@ -670,19 +777,16 @@ function rerender() {
  * Handles the window onload event.
  */
 function handleLoad() {
-    mapViewCreate();
+    mapViewCreate("mapid");
+    clubStrokeViewCreate(clubReadAll(), document.getElementById("clubStrokeCreateContainer"));
     loadData();
 }
 
 /**
  * Handles the click event for logging the current location.
  */
-function handleLogLocationClick() {
-    if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(strokeCreate, showError);
-    } else {
-        document.getElementById("error").innerText = "Geolocation is not supported by this browser.";
-    }
+function handleStrokeAddClick() {
+    clubStrokeViewToggle();
 }
 
 /**
@@ -740,7 +844,8 @@ function showError(error) {
 // Event listeners
 window.onload = handleLoad;
 document.getElementById("holePinCreate").addEventListener("click", holePinCreate);
-document.getElementById("logLocation").addEventListener("click", handleLogLocationClick);
+document.getElementById("strokeAdd").addEventListener("click", handleStrokeAddClick);
+document.getElementById("clubStrokeCreateContainerClose").addEventListener("click", clubStrokeViewToggle);
 document.getElementById("newHole").addEventListener("click", handleNewHoleClick);
 document.getElementById("roundCreate").addEventListener("click", handleRoundCreateClick);
 document.getElementById("toggleRound").addEventListener("click", handleToggleRoundClick);
