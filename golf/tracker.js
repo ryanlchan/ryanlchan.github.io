@@ -124,7 +124,7 @@ function strokeMarkerCreate(stroke, options) {
         iconSize: [30, 45], // size of the icon
     });
     let opt = { draggable: true, opacity: .8, icon }
-    if (!(options === undefined)) {
+    if (options !== undefined) {
         opt = {
             ...opt,
             ...options
@@ -286,7 +286,7 @@ function holePinCreate() {
 }
 
 function holePinID(hole) {
-    return `hole_pin_${hole.number}`
+    return `pin_hole_${hole.number}`
 }
 
 /**
@@ -664,13 +664,73 @@ function mapViewCreate(mapid) {
     }).addTo(mapView);
 }
 
+/**
+ * Render the set of markers/layers for a given hole
+ * @param {Object} hole 
+ */
+function holeViewCreate(hole) {
+    console.debug(`Rendering layers for hole ${hole.number}`)
+    console.debug(`Creating markers for hole ${hole.number}`);
+    hole.strokes.forEach(function (stroke) {
+        console.debug(`Creating stroke markers for hole ${hole.number} stroke ${stroke.index}`);
+        strokeMarkerCreate(stroke);
+    });
+    if (hole.pin) {
+        console.debug(`Creating pin markers for hole ${hole.number}`);
+        pinMarkerCreate(hole);
+    }
+    console.debug(`Creating stroke line for hole ${hole.number}`)
+    strokelineCreate(hole);
+}
+
+/**
+ * Create a hole selector given a select element
+ * @param {Element} element a select element that we will populate with options
+ */
+function holeSelectViewCreate(element) {
+    //Register this element as the current hole selector
+    holeSelector = element;
+
+    // Populate the select with options
+    holeSelectViewUpdate();
+
+    // Add event listener to handle selection changes
+    element.addEventListener('change', function () {
+        let selectedHoleNumber = parseInt(this.value, 10);
+        holeSelect(selectedHoleNumber);
+    });
+}
+
+/**
+ * Update a given select element with current hole options
+ * @param {Element} element 
+ */
+function holeSelectViewUpdate() {
+    if (!holeSelector) {
+        return
+    }
+    while (holeSelector.firstChild) {
+        holeSelector.removeChild(holeSelector.firstChild);
+    }
+    for (let hole of round.holes) {
+        let option = document.createElement('option');
+        option.value = hole.number;
+        option.text = `Hole ${hole.number}`;
+        holeSelector.appendChild(option);
+    }
+    holeSelector.value = currentHole.number
+}
+
+/**
+ * Set up a marker on the map which tracks current user position and caches location
+ */
 function currentPositionUpdate() {
     currentPositionEnabled = true;
     withLocation(() => {
-        let watchID = navigator.geolocation.watchPosition(function (position) {
+        navigator.geolocation.watchPosition(function (position) {
             const markerID = "currentPosition";
             currentPosition = position;
-            latlong = [position.coords.latitude, position.coords.longitude];
+            let latlong = [position.coords.latitude, position.coords.longitude];
             let currentPositionMarker = layerRead(markerID)
             if (currentPositionMarker) {
                 // If the marker already exists, just update its position
