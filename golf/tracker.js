@@ -12,6 +12,7 @@ let layers = {};
 let actionStack = [];
 let currentPosition;
 let currentPositionEnabled;
+let holeSelector;
 
 /**
  * ===========
@@ -185,19 +186,8 @@ function strokeTooltipText(stroke) {
  * @param {Object} hole 
  */
 function strokelineCreate(hole) {
-    let points = [];
-    let strokeline;
-    // console.debug("Creating strokeline for hole " + hole.number)
-
-    // Sort strokes by index and convert to LatLng objects
-    hole.strokes.sort((a, b) => a.index - b.index).forEach(stroke => {
-        points.push(L.latLng(stroke.start.y, stroke.start.x));
-    });
-
-    // If a pin is set, add it to the end of the polyline
-    if (hole.pin) {
-        points.push(L.latLng(hole.pin.y, hole.pin.x));
-    }
+    console.debug("Creating strokeline for hole " + hole.number)
+    let points = strokelinePoints(hole);
 
     // Only create polyline if there's more than one point
     if (points.length == 0) {
@@ -205,9 +195,9 @@ function strokelineCreate(hole) {
     }
 
     // Add Line to map
-    strokeline = L.polyline(points, { color: 'white', weight: 2 })
-    id = strokelineID(hole)
-    layerCreate(id, strokeline)
+    let strokeline = L.polyline(points, { color: 'white', weight: 2 });
+    let id = strokelineID(hole);
+    layerCreate(id, strokeline);
     return strokeline
 }
 
@@ -215,12 +205,18 @@ function strokelineCreate(hole) {
  * Rerender Stroke Lines
  */
 function strokelineUpdate() {
-    // Remove existing polylines
-    strokelineDeleteAll();
-
-    // For each hole, add a polyline
-    for (const hole of round.holes) {
-        strokelineCreate(hole)
+    let layers = layerReadAll();
+    let selected = {}
+    for (let id in layers) {
+        if (id.includes("strokeline")) {
+            selected[id] = layers[id];
+        }
+    }
+    for (let hole of round.holes) {
+        let id = strokelineID(hole);
+        if (Object.keys(selected).includes(id)) {
+            selected[id].setLatLngs(strokelinePoints(hole));
+        }
     }
 }
 
@@ -231,6 +227,25 @@ function strokelineDeleteAll() {
     for (const hole of round.holes) {
         layerDelete(strokelineID(hole))
     }
+}
+
+/**
+ * Helper function just to generate point arrays for a hole
+ * @param {Object} hole 
+ * @returns {Array[latLng]}
+ */
+function strokelinePoints(hole) {
+    let points = []
+    // Sort strokes by index and convert to LatLng objects
+    hole.strokes.sort((a, b) => a.index - b.index).forEach(stroke => {
+        points.push(L.latLng(stroke.start.y, stroke.start.x));
+    });
+
+    // If a pin is set, add it to the end of the polyline
+    if (hole.pin) {
+        points.push(L.latLng(hole.pin.y, hole.pin.x));
+    }
+    return points
 }
 
 /**
@@ -257,10 +272,35 @@ function holeCreate() {
         currentHole = { ...defaultCurrentHole(), number: round.holes.length + 1 };
         round.holes.push(currentHole);
         currentStrokeIndex = 0;
-        rerender();
     } else {
         document.getElementById("error").innerText = "Current hole is empty, cannot create a new hole.";
     }
+}
+
+/**
+ * Select a new hole and update pointers/views to match
+ * @param {Number} holeNum 
+ */
+function holeSelect(holeNum) {
+    // Update currentHole
+    if (round.holes[holeNum - 1]) {
+        currentHole = round.holes[holeNum - 1];
+        currentStrokeIndex = currentHole.strokes.length;
+    } else {
+        console.error(`Attempted to select hole ${holeNum} but does not exist!`);
+    }
+
+    // Delete all hole-specific layers
+    const allLayers = layerReadAll();
+    for (let id in allLayers) {
+        if (id.includes("hole_")) {
+            layerDelete(id);
+        }
+    }
+
+    // Add all the layers of this new hole
+    holeViewCreate(currentHole);
+    rerender();
 }
 
 /**
@@ -423,15 +463,7 @@ function loadData() {
         round = loadedData;
         console.log("Rehydrating round from localStorage")
         round.holes.forEach(function (hole) {
-            console.debug(`Creating markers for hole ${hole.number}`);
-            hole.strokes.forEach(function (stroke) {
-                console.debug(`Creating stroke markers for hole ${hole.number} stroke ${stroke.index}`);
-                strokeMarkerCreate(stroke);
-            });
-            if (hole.pin) {
-                console.debug(`Creating pin markers for hole ${hole.number}`);
-                pinMarkerCreate(hole);
-            }
+            holeViewCreate(hole);
         });
 
         const lastHoleIndex = round.holes.length - 1;
@@ -770,7 +802,7 @@ function updateStats() {
     const holeElement = document.getElementById("holeStats");
     const strokeElement = document.getElementById("strokeStats");
     if (currentHole) {
-        holeElement.innerText = `Hole ${currentHole.number} | ${currentHole.strokes.length} Strokes`;
+        holeElement.innerText = `| ${currentHole.strokes.length} Strokes`;
         strokeElement.innerHTML = "";
         currentHole.strokes.forEach(function (stroke, index) {
             let distance = 0;
@@ -903,6 +935,7 @@ function handleLoad() {
     mapViewCreate("mapid");
     clubStrokeViewCreate(clubReadAll(), document.getElementById("clubStrokeCreateContainer"));
     loadData();
+    holeSelectViewCreate(document.getElementById('holeSelector'));
 }
 
 /**
@@ -917,6 +950,9 @@ function handleStrokeAddClick() {
  */
 function handleNewHoleClick() {
     holeCreate();
+    holeSelectViewUpdate();
+    holeSelect(currentHole.number);
+    rerender();
 }
 
 /**
@@ -925,6 +961,8 @@ function handleNewHoleClick() {
 function handleRoundCreateClick() {
     if (confirm("Are you sure you want to start a new round? All current data will be lost.")) {
         roundCreate();
+        holeSelectViewUpdate();
+        rerender();
     }
 }
 

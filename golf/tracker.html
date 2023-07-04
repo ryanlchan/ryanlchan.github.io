@@ -95,42 +95,50 @@
             height: 50px;
         }
 
+        #holeStats {
+            display: inline-block;
+        }
     </style>
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
 </head>
+
 <body>
-    <div id="mapid" ></div>
-    <button id="strokeAdd" class="success">Log New Stroke</button>
-    <div id="clubStrokeCreateContainer" class="inactive">
-        <div id="clubStrokeCreateContainerCloseContainer">
-            <button id="clubStrokeCreateContainerClose" class="dark">Close and go back</button>
+    <div id="mapid"></div>
+    <div class="bodyContainer">
+        <button id="strokeAdd" class="success">Log New Stroke</button>
+        <div id="clubStrokeCreateContainer" class="inactive">
+            <div id="clubStrokeCreateContainerCloseContainer">
+                <button id="clubStrokeCreateContainerClose" class="dark">Close and go back</button>
+            </div>
         </div>
+        &nbsp;&nbsp;|&nbsp;&nbsp;
+        <button id="holePinCreate">Set Pin</button>
+        <button id="newHole">New Hole</button>
+        <button id="undoAction">Undo</button>
+        <hr>
+        <div id="stats">
+            <select id="holeSelector"></select>
+            <div id="holeStats"></div>
+            <ul id="strokeStats"></ul>
+        </div>
+        <hr>
+        <div class="buttonRow">
+            <button id="toggleRound">Edit Round Info</button>
+        </div>
+        <div id="roundInfo" class="inactive">
+            <input type="text" id="courseName" placeholder="Course Name">
+            <button id="roundCreate">New Round</button>
+            <button id="copyToClipboard">Copy to Clipboard</button>
+            <pre id="locationData"></pre>
+        </div>
+        <hr>
+
+        <div id="error"></div>
     </div>
-    &nbsp;&nbsp;|&nbsp;&nbsp;
-    <button id="holePinCreate">Set Pin</button>
-    <button id="newHole">New Hole</button>
-    <button id="undoAction">Undo</button>    
-    <hr>
-    <div id="stats">
-        <p id="holeStats"></p>
-        <ul id="strokeStats"></ul>
-    </div>
-    <hr>
-    <div class="buttonRow">
-        <button id="toggleRound">Edit Round Info</button>
-        <button id="copyToClipboard">Copy to Clipboard</button>
-    </div>
-    <div id="roundInfo" class="inactive">
-        <input type="text" id="courseName" placeholder="Course Name">
-        <button id="roundCreate">New Round</button>
-        <pre id="locationData"></pre>
-    </div>
-    <hr>
-    
-    <div id="error"></div>
 
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
     <script src="tracker.js"></script>
     <script src="tests.js"></script>
 </body>
+
 </html>
