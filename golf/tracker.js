@@ -62,6 +62,7 @@ function strokeDelete(holeNumber, strokeIndex) {
     let hole = round.holes.find(h => h.number === holeNumber);
     if (hole) {
         let stroke = hole.strokes[strokeIndex];
+        undoCreate("strokeDelete");
 
         // Delete Marker
         let markerID = strokeMarkerID(stroke)
@@ -80,6 +81,7 @@ function strokeDelete(holeNumber, strokeIndex) {
 
 function strokeMove(holeNumber, strokeIndex, offset) {
     console.debug(`Moving stroke ${strokeIndex} from hole ${holeNumber} by ${offset}`)
+    undoCreate("strokeMove");
     const hole = round.holes[holeNumber - 1]
     const mover = hole.strokes[strokeIndex]
     if (offset < 0) {
@@ -311,6 +313,8 @@ function holePinCreate() {
         return;
     }
     withLocation((position) => {
+        undoCreate("pinCreate");
+
         currentHole.pin = {
             x: position.coords.longitude,
             y: position.coords.latitude,
