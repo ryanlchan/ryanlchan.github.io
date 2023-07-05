@@ -13,6 +13,7 @@ let actionStack = [];
 let currentPosition;
 let currentPositionEnabled;
 let holeSelector;
+let activeStrokeMarker;
 
 /**
  * ===========
@@ -126,7 +127,7 @@ function strokeMarkerCreate(stroke, options) {
         iconUrl: "circle-ypad.png", // replace with the path to your flag icon
         iconSize: [30, 45], // size of the icon
     });
-    let opt = { draggable: true, opacity: .8, icon }
+    let opt = { draggable: true, opacity: .8, icon, stroke }
     if (options !== undefined) {
         opt = {
             ...opt,
@@ -136,6 +137,7 @@ function strokeMarkerCreate(stroke, options) {
     let id = strokeMarkerID(stroke)
     let marker = markerCreate(id, coordinate, opt);
     marker.bindTooltip((function () { return strokeTooltipText(stroke) }), { permanent: true, direction: "top", offset: [0, 10] })
+    marker.on('click', strokeMarkerActivate(marker));
     mapView.setView([coordinate.y, coordinate.x], 18);
 }
 
@@ -158,6 +160,77 @@ function strokeMarkerUpdate() {
 }
 
 /**
+ * Return a function that can be used to activate a stroke marker
+ * @param {Marker} marker the leaflet map marker 
+ * @returns 
+ */
+function strokeMarkerActivate(marker) {
+    // callback doesn't need to handle the click event
+    return (() => {
+        // Deactivate the currently active marker if there is one
+        if (activeStrokeMarker) {
+            strokeMarkerDeactivate()
+        }
+
+        // Activate the clicked marker
+        marker.getElement().classList.add('active-marker');
+        activeStrokeMarker = marker;
+
+        // Show the set Aim button
+        if (marker.options.stroke.aim) {
+            markerCreate("aim", activeStrokeMarker.options.stroke.aim);
+        } else {
+            strokeMarkerAimCreateButton.classList.remove("inactive")
+        }
+
+        // Register deactivation clicks
+        mapView.addEventListener("click", strokeMarkerDeactivate)
+    });
+}
+
+/**
+ * Deactivate an aim marker when the user clicks on the map
+ */
+function strokeMarkerDeactivate() {
+    if (activeStrokeMarker) {
+        activeStrokeMarker.getElement().classList.remove('active-marker');
+        activeStrokeMarker = null;
+
+        // Hide the "Set aim" button and remove the aim marker
+        strokeMarkerAimCreateButton.classList.add("inactive")
+        if (layerRead('aim')) {
+            layerDelete('aim');
+        }
+
+        // Delete deactivation clicks
+        mapView.removeEventListener("click", strokeMarkerDeactivate)
+    }
+}
+
+
+/**
+ * Create an aim marker where the user has currently clicked
+ * @param {Event} e the click event on the map 
+ */
+function strokeMarkerAimCreate(e) {
+    // Unbind the map click event handler
+    mapView.off('click', strokeMarkerAimCreate);
+
+    if (!activeStrokeMarker) {
+        console.error("Cannot add aim, no active stroke marker")
+        return
+    }
+
+    activeStrokeMarker.options.stroke.aim = {
+        x: e.latlng.lng,
+        y: e.latlng.lat,
+        crs: "EPSG:4326"
+    }
+
+    markerCreate("aim", activeStrokeMarker.options.stroke.aim);
+}
+
+/**
  * Create a unique ID for a Stroke
  * @param {Object} stroke 
  * @returns {String}
@@ -166,6 +239,14 @@ function strokeMarkerID(stroke) {
     return `stroke_marker_${stroke.index}_hole_${stroke.hole}`
 }
 
+/**
+ * Create a unique ID for a Stroke AIm marker
+ * @param {Object} stroke
+ * @returns {String}
+ */
+function strokeMarkerAimID(stroke) {
+    return `stroke_marker_aim_${stroke.index}_hole_${stroke.hole}`
+}
 
 /**
  * Return the tooltip text for a stroke marker
@@ -491,6 +572,7 @@ function loadData() {
  * @param {Object} options - Marker options.
  */
 function markerCreate(name, coordinate, options) {
+    options = { draggable: true, ...options }
     const marker = L.marker([coordinate.y, coordinate.x], options);
     marker.on("drag", handleMarkerDrag(marker, coordinate));
     layerCreate(name, marker)
@@ -970,6 +1052,12 @@ function handleRoundCreateClick() {
     }
 }
 
+function handleStrokeMarkerAimCreateClick(e) {
+    // Bind a map click event handler to set the aim
+    mapView.on("click", strokeMarkerAimCreate);
+    mapView.off("click", strokeMarkerDeactivate);
+}
+
 /**
  * Handles the click event for toggling the round information display.
  */
@@ -1007,6 +1095,8 @@ function showError(error) {
 }
 
 // Event listeners
+let strokeMarkerAimCreateButton = document.getElementById("strokeMarkerAimCreate")
+
 window.onload = handleLoad;
 document.getElementById("holePinCreate").addEventListener("click", holePinCreate);
 document.getElementById("strokeAdd").addEventListener("click", handleStrokeAddClick);
@@ -1016,3 +1106,4 @@ document.getElementById("roundCreate").addEventListener("click", handleRoundCrea
 document.getElementById("toggleRound").addEventListener("click", handleToggleRoundClick);
 document.getElementById("copyToClipboard").addEventListener("click", handleCopyToClipboardClick);
 document.getElementById("undoAction").addEventListener("click", handleUndoActionClick);
+strokeMarkerAimCreateButton.addEventListener('click', handleStrokeMarkerAimCreateClick);

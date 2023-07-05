@@ -98,6 +98,10 @@
         #holeStats {
             display: inline-block;
         }
+
+        .active-marker {
+            background-color: #dc3545;
+        }
     </style>
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
 </head>
@@ -113,6 +117,7 @@
         </div>
         &nbsp;&nbsp;|&nbsp;&nbsp;
         <button id="holePinCreate">Set Pin</button>
+        <button id="strokeMarkerAimCreate" class="inactive">Set Aim</button>
         <button id="newHole">New Hole</button>
         <button id="undoAction">Undo</button>
         <hr>
