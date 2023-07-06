@@ -233,6 +233,7 @@ function strokeMarkerAimCreate(e) {
     }
     marker = markerCreate("aim", activeStrokeMarker.options.stroke.aim);
     marker.on("dragend", sgGridUpdate);
+    activeStrokeMarker.on("dragend", sgGridUpdate);
     sgGridCreate();
 }
 
@@ -254,38 +255,20 @@ function sgGridCreate() {
         [currentHole.pin.y, currentHole.pin.x],
         activeStrokeMarker.options.stroke.dispersion);
     // Create alpha/colorscale
-    let minSg = null;
-    let maxSg = null;
-    let minProb = null;
-    let maxProb = null;
-    grid.features.forEach((feature, index) => {
-        if (!minSg || feature.properties.strokesGained < minSg) {
-            minSg = feature.properties.strokesGained;
-        }
-        if (!maxSg || feature.properties.strokesGained > maxSg) {
-            maxSg = feature.properties.strokesGained;
-        }
-        if (!minProb || feature.properties.probability < minProb) {
-            minProb = feature.properties.probability;
-        }
-        if (!maxProb || feature.properties.probability > maxProb) {
-            maxProb = feature.properties.probability;
-        };
-    });
-    let colorscale = chroma.scale('RdYlGn').domain([minSg, maxSg]);
-    let alphamid = (minProb + maxProb) / 2
+    let colorscale = chroma.scale('RdYlGn').domain([-.25, .15]);
+    let alphamid = 1 / grid.features.length;
     const clip = (num, min, max) => Math.min(Math.max(num, min), max)
     let gridLayer = L.geoJSON(grid, {
         style: function (feature) {
             return {
                 stroke: false,
                 fillColor: colorscale(feature.properties.strokesGained).hex(),
-                fillOpacity: clip(feature.properties.probability / alphamid * 0.5, 0.2, 0.8)
+                fillOpacity: clip(feature.properties.probability / alphamid * 0.2, 0.1, 0.7)
             }
         }
     }).bindPopup(function (layer) {
-        return `SG: ${layer.feature.properties.strokesGained} 
-            Prob: ${layer.feature.properties.probability}`;
+        return `SG: ${layer.feature.properties.strokesGained.toFixed(3)}
+             Prob: ${(layer.feature.properties.probability * 100).toFixed(1)}%`;
     });
     layerCreate('grid', gridLayer);
 }
@@ -298,7 +281,9 @@ function sgGridDelete() {
 
 function sgGridUpdate() {
     sgGridDelete();
-    sgGridCreate();
+    if (activeStrokeMarker && currentHole.pin) {
+        sgGridCreate();
+    }
 }
 
 /**

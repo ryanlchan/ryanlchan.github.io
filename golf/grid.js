@@ -1,6 +1,5 @@
 // const turf = require('@turf/turf');
 // const fetch = require('node-fetch');
-// const mathjs = require('mathjs');
 // const osmtogeojson = require('osmtogeojson');
 
 const GOLF_COURSE_URL = "https://overpass-api.de/api/interpreter?data=[out:json];(relation[\"name\"=\"Golf Course\"];);out%20geom;";
