@@ -44,7 +44,20 @@ function createHexGrid(feature) {
 
     let options = { units: 'kilometers' };
     let grid = turf.hexGrid(bbox, x, options);
-    return grid;
+    // Create an empty feature collection to store the filtered features
+    const filteredGrid = turf.featureCollection([]);
+
+    // Iterate over each cell in geojson1
+    turf.featureEach(grid, (cell) => {
+        // Check if the cell exists within the aim feature
+        if (turf.booleanContains(feature, cell)) {
+            // Add the cell to the filtered collection
+            filteredGrid.features.push(cell);
+        }
+    });
+    // const filteredGrid = grid;
+
+    return filteredGrid;
 }
 
 const findTerrainType = (point, features) => {
@@ -119,7 +132,7 @@ function calculateStrokesGained(grid, holeCoordinate, strokesRemainingStart, ter
     });
 }
 
-function sgGridCreate(startCoordinate, aimCoordinate, holeCoordinate, dispersionNumber) {
+function sgGridCalculate(startCoordinate, aimCoordinate, holeCoordinate, dispersionNumber) {
     let startPoint = turf.flip(turf.point(startCoordinate));
     let aimPoint = turf.flip(turf.point(aimCoordinate));
     let holePoint = turf.flip(turf.point(holeCoordinate));
@@ -137,7 +150,7 @@ function sgGridCreate(startCoordinate, aimCoordinate, holeCoordinate, dispersion
 
     // Get probabilities
     probabilityGrid(hexGrid, aimPoint, dispersionNumber);
-    calculateStrokesGained(hexGrid, aimPoint, strokesRemainingStart, golfCourseData);
+    calculateStrokesGained(hexGrid, holePoint, strokesRemainingStart, golfCourseData);
 
     let totalWeightedStrokesGained = hexGrid.features.reduce((sum, feature) => sum + feature.properties.weightedStrokesGained, 0);
 
@@ -156,4 +169,4 @@ const RANCHO_1_COG = [34.04684885, -118.41427055791367]
 const start = [34.0453989458967, -118.41754320137206]
 const aim = [34.04649461303403, -118.41540545614271]
 const pin = [34.04684885, -118.41427055791367]
-let hexGrid = sgGridCreate(RANCHO_1_BLUE, RANCHO_1_FAIRWAY, RANCHO_1_COG, 1);
+let hexGrid = sgGridCalculate(RANCHO_1_BLUE, RANCHO_1_FAIRWAY, RANCHO_1_COG, 1);

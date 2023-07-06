@@ -178,7 +178,7 @@ function strokeMarkerActivate(marker) {
 
         // Show the set Aim button
         if (marker.options.stroke.aim) {
-            markerCreate("aim", activeStrokeMarker.options.stroke.aim);
+            strokeMarkerAimCreate();
         } else {
             strokeMarkerAimCreateButton.classList.remove("inactive")
         }
@@ -202,6 +202,9 @@ function strokeMarkerDeactivate() {
             layerDelete('aim');
         }
 
+        // Hide sg grid
+        sgGridDelete();
+
         // Delete deactivation clicks
         mapView.removeEventListener("click", strokeMarkerDeactivate)
     }
@@ -221,13 +224,81 @@ function strokeMarkerAimCreate(e) {
         return
     }
 
-    activeStrokeMarker.options.stroke.aim = {
-        x: e.latlng.lng,
-        y: e.latlng.lat,
-        crs: "EPSG:4326"
+    if (e) {
+        activeStrokeMarker.options.stroke.aim = {
+            x: e.latlng.lng,
+            y: e.latlng.lat,
+            crs: "EPSG:4326"
+        }
+    }
+    marker = markerCreate("aim", activeStrokeMarker.options.stroke.aim);
+    marker.on("dragend", sgGridUpdate);
+    sgGridCreate();
+}
+
+function sgGridCreate() {
+    if (!activeStrokeMarker) {
+        console.error("No active stroke, cannot create sg grid");
+        return
+    } else if (!currentHole.pin) {
+        console.error("Pin not set, cannot create sg grid");
+        return
+    } else if (layerRead("grid")) {
+        console.warn("Grid already exists, recreating");
+        layerDelete("grid");
     }
 
-    markerCreate("aim", activeStrokeMarker.options.stroke.aim);
+    let grid = sgGridCalculate(
+        [activeStrokeMarker.options.stroke.start.y, activeStrokeMarker.options.stroke.start.x],
+        [activeStrokeMarker.options.stroke.aim.y, activeStrokeMarker.options.stroke.aim.x],
+        [currentHole.pin.y, currentHole.pin.x],
+        activeStrokeMarker.options.stroke.dispersion);
+    // Create alpha/colorscale
+    let minSg = null;
+    let maxSg = null;
+    let minProb = null;
+    let maxProb = null;
+    grid.features.forEach((feature, index) => {
+        if (!minSg || feature.properties.strokesGained < minSg) {
+            minSg = feature.properties.strokesGained;
+        }
+        if (!maxSg || feature.properties.strokesGained > maxSg) {
+            maxSg = feature.properties.strokesGained;
+        }
+        if (!minProb || feature.properties.probability < minProb) {
+            minProb = feature.properties.probability;
+        }
+        if (!maxProb || feature.properties.probability > maxProb) {
+            maxProb = feature.properties.probability;
+        };
+    });
+    let colorscale = chroma.scale('RdYlGn').domain([minSg, maxSg]);
+    let alphamid = (minProb + maxProb) / 2
+    const clip = (num, min, max) => Math.min(Math.max(num, min), max)
+    let gridLayer = L.geoJSON(grid, {
+        style: function (feature) {
+            return {
+                stroke: false,
+                fillColor: colorscale(feature.properties.strokesGained).hex(),
+                fillOpacity: clip(feature.properties.probability / alphamid * 0.5, 0.2, 0.8)
+            }
+        }
+    }).bindPopup(function (layer) {
+        return `SG: ${layer.feature.properties.strokesGained} 
+            Prob: ${layer.feature.properties.probability}`;
+    });
+    layerCreate('grid', gridLayer);
+}
+
+function sgGridDelete() {
+    if (layerRead("grid")) {
+        layerDelete("grid");
+    }
+}
+
+function sgGridUpdate() {
+    sgGridDelete();
+    sgGridCreate();
 }
 
 /**
