@@ -2,34 +2,112 @@
 // const fetch = require('node-fetch');
 // const osmtogeojson = require('osmtogeojson');
 
-const GOLF_COURSE_URL = "https://overpass-api.de/api/interpreter?data=[out:json];(relation[\"name\"=\"Golf Course\"];);out%20geom;";
+const OVERPASS_URL = "https://overpass-api.de/api/interpreter";
+const NOMINATIM_URL = "https://nominatim.openstreetmap.org/search?q=";
 
-// Pre-calculated coefficients for the polynomial preloaded from coeffs.js
-// const POLY_COEFFS = xxxx
-
-function fetchGolfCourseData() {
-    // Stub for the OSM query
-    // return fetch(GOLF_COURSE_URL).then(response => {
-    //     let data = response.json();
-    //     data = osmtogeojson(data)
-    //     return scrubOSMData(data.features)
-    // });
-    let data = rancho_data.response;
-    data = osmtogeojson(data)
-    return scrubOSMData(data.features)
+function setCache(key, json) {
+    localStorage.setItem(
+        key,
+        JSON.stringify({ ...json })
+    );
 }
 
-function fetchGolfCourseBoundaries() {
-    return fetch(GOLF_COURSE_URL).then(response => response.json());
+function readCache(key) {
+    return JSON.parse(localStorage.getItem(key));
 }
 
-function scrubOSMData(features) {
-    for (let feature of features) {
+/**
+ * Fetch some data from OSM, process it, then cache it in localStorage
+ * @param {String} url 
+ * @param {String} storageKey 
+ * @param {Function} callback 
+ * @returns {Promise}
+ */
+function fetchOSMData(query, storageKey, callback) {
+    let opt = {
+        method: "POST",
+        mode: "cors",
+        redirect: "follow",
+        headers: {
+            Accept: "*",
+        },
+        body: `data=${encodeURIComponent(query)}`
+    };
+    return fetch(OVERPASS_URL, opt)
+        .then(response => {
+            if (!response.ok) {
+                return Promise.reject('Request failed: HTTP ' + response.status);
+            }
+            return response.json();
+        }).then((data) => {
+            console.debug("Succesfully downloaded OSM polys, starting processing")
+            data = osmtogeojson(data);
+            data = scrubOSMData(data)
+            console.debug("Succesfully processed OSM polys, caching as " + storageKey)
+            setCache(storageKey, data)
+            if (callback) {
+                callback(data);
+            }
+        });
+}
+
+/**
+ * Precache all course data
+ * @param {String} courseName 
+ * @param {Function} callback 
+ * @returns {Promise}
+ */
+function fetchAllGolfCourseData(courseName, callback) {
+    let polys = fetchGolfCourseData(courseName);
+    return Promise.all([polys], callback);
+}
+
+/**
+ * Precache course polys
+ * @param {String} courseName 
+ * @param {Boolean} force set to true to force a rewrite of cached polys
+ * @param {Function} callback
+ * @returns {Promise}
+ */
+function fetchGolfCourseData(courseName, force, callback) {
+    let query = `[out: json];(way["leisure"="golf_course"]["name"~"${courseName}"];relation["leisure"="golf_course"]["name"~"${courseName}"];);out geom;`
+    let storageKey = `courseData-${courseName}`;
+    if (force || !readCache(storageKey)) {
+        return fetchOSMData(query, storageKey, callback);
+    } else {
+        return new Promise(() => setTimeout(callback, 0));
+    }
+}
+
+function getGolfCourseData(courseName) {
+    // Check if the cache has it first
+    let storageKey = `courseData-${courseName}`;
+    let polys = readCache(storageKey);
+    if (polys) {
+        // Cache hit, just return the callback asap
+        return polys;
+    } else {
+        console.warn("Course has no polys or not found");
+        return Error("No data available");
+    }
+}
+
+function scrubOSMData(geojson) {
+    for (let feature of geojson.features) {
         if (feature.properties.golf) {
             feature.properties["terrainType"] = feature.properties.golf
         }
+        let featureType = turf.getType(feature);
+        if (featureType === 'MultiPolygon') {
+            // If it's a MultiPolygon, split into polygons
+            for (let polygon of feature.geometry.coordinates) {
+                let polygonFeature = turf.polygon(polygon);
+                polygonFeature.properties = feature.properties;
+            }
+        }
     }
-    return features
+    presortTerrain(geojson);
+    return geojson
 }
 
 function createHexGrid(feature) {
@@ -59,33 +137,48 @@ function createHexGrid(feature) {
     return filteredGrid;
 }
 
-const findTerrainType = (point, features) => {
+function presortTerrain(collection) {
     // Define the priority of terrains
     const terrainPriority = ["green", "tee", "bunker", "fairway", "hazard", "penalty"];
 
     // Sort the features based on the priority of the terrains
-    features.sort((a, b) => {
+    collection.features.sort((a, b) => {
         return terrainPriority.indexOf(a.properties.terrainType) - terrainPriority.indexOf(b.properties.terrainType);
     });
+    return collection
+}
 
+function findBoundaries(collection) {
+    return turf.featureCollection(collection.features.reduce((acc, feature) => {
+        if (feature.properties.leisure == "golf_course") {
+            return acc.concat(feature);
+        }
+    }, []));
+}
+
+/**
+ * 
+ * @param {Point} point 
+ * @param {FeatureCollection} collection A prescrubbed collection of Features (sorted, single poly'd, etc)
+ * @param {FeatureCollection} bounds A prescrubbed collection of boundaries, optional
+ * @returns 
+ */
+function findTerrainType(point, collection, bounds) {
+    if (!bounds) {
+        bounds = findBoundaries(collection);
+    }
+    if (bounds.features.every((bound) => !turf.booleanPointInPolygon(point, bound))) {
+        return "out_of_bounds"
+    }
     // Find the feature in which the point resides
-    for (let feature of features) {
+    for (let feature of collection.features) {
         let featureType = turf.getType(feature);
         if (featureType === 'Polygon' && turf.booleanPointInPolygon(point, feature)) {
-            return feature.properties.terrainType;
-        }
-        else if (featureType === 'MultiPolygon') {
-            // If it's a MultiPolygon, check each individual Polygon
-            for (let polygon of feature.geometry.coordinates) {
-                // The Polygon needs to be converted back to a GeoJSON feature to be used with booleanPointInPolygon
-                let polygonFeature = turf.polygon(polygon);
-                if (turf.booleanPointInPolygon(point, polygonFeature)) {
-                    return feature.properties.terrainType;
-                }
+            if (feature.properties.terrainType) {
+                return feature.properties.terrainType;
             }
         }
     }
-
     // If the point does not overlap with any of these terrain features, it is considered to be in the rough
     return "rough";
 }
@@ -117,11 +210,13 @@ function calculateStrokesRemaining(distanceToHole, terrainType) {
     return totalStrokes;
 }
 
-function calculateStrokesGained(grid, holeCoordinate, strokesRemainingStart, terrainData) {
+function calculateStrokesGained(grid, holeCoordinate, strokesRemainingStart, golfCourseData) {
+    let bounds = findBoundaries(golfCourseData);
+
     grid.features.forEach((feature) => {
         const center = turf.center(feature);
         const distanceToHole = turf.distance(center, holeCoordinate, { units: "kilometers" }) * 1000;
-        const terrainType = findTerrainType(center, terrainData);
+        const terrainType = findTerrainType(center, golfCourseData, bounds);
         const strokesRemaining = calculateStrokesRemaining(distanceToHole, terrainType);
         const strokesGained = strokesRemainingStart - strokesRemaining - 1;
         feature.properties.distanceToHole = distanceToHole;
@@ -132,13 +227,17 @@ function calculateStrokesGained(grid, holeCoordinate, strokesRemainingStart, ter
     });
 }
 
-function sgGridCalculate(startCoordinate, aimCoordinate, holeCoordinate, dispersionNumber) {
+function sgGridCalculate(startCoordinate, aimCoordinate, holeCoordinate, dispersionNumber, courseName) {
+    let golfCourseData = getGolfCourseData(courseName);
+    if (golfCourseData instanceof Error) {
+        // If no data currently available, reraise error to caller
+        return golfCourseData;
+    }
+    presortTerrain(golfCourseData);
     let startPoint = turf.flip(turf.point(startCoordinate));
     let aimPoint = turf.flip(turf.point(aimCoordinate));
     let holePoint = turf.flip(turf.point(holeCoordinate));
     let aimWindow = turf.circle(aimPoint, 3 * dispersionNumber / 1000, { units: "kilometers" })
-
-    let golfCourseData = fetchGolfCourseData();
 
     // Determine strokes gained at the start
     let terrainTypeStart = findTerrainType(startPoint, golfCourseData);
@@ -159,6 +258,13 @@ function sgGridCalculate(startCoordinate, aimCoordinate, holeCoordinate, dispers
     return hexGrid;
 }
 
+/**
+ * Calculate the error remainder function for a normal
+ * @param {Number} x
+ * @param {Number} mean
+ * @param {Number} standardDeviation
+ * @returns {Number}
+ */
 function erf(x, mean, standardDeviation) {
     const z = (x - mean) / (standardDeviation * Math.sqrt(2));
     const t = 1 / (1 + 0.3275911 * Math.abs(z));
@@ -170,6 +276,13 @@ function erf(x, mean, standardDeviation) {
     return 1 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * Math.exp(-z * z);
 }
 
+/**
+ * Calculates the cumulative distribution function for a normal
+ * @param {Number} x 
+ * @param {Number} mean 
+ * @param {Number} standardDeviation 
+ * @returns {Number}
+ */
 function cdf(x, mean, standardDeviation) {
     const erf = erf(x, mean, standardDeviation);
     const z = (x - mean) / (standardDeviation * Math.sqrt(2));

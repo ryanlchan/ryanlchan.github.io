@@ -261,7 +261,14 @@ function sgGridCreate() {
         [activeStrokeMarker.options.stroke.start.y, activeStrokeMarker.options.stroke.start.x],
         [activeStrokeMarker.options.stroke.aim.y, activeStrokeMarker.options.stroke.aim.x],
         [currentHole.pin.y, currentHole.pin.x],
-        activeStrokeMarker.options.stroke.dispersion);
+        activeStrokeMarker.options.stroke.dispersion,
+        round.course);
+
+    // Check if any grid returned, for example if the data didn't load or something
+    if (grid instanceof Error) {
+        // if failed, retry every 1s until you get the data
+        setTimeout(sgGridCreate, 1000);
+    }
     // Create alpha/colorscale
     let colorscale = chroma.scale('RdYlGn').domain([-.25, .15]);
     let alphamid = 1 / grid.features.length;
@@ -536,6 +543,7 @@ function roundCreate() {
     round = { ...defaultRound(), course: courseName };
     currentHole = round.holes.at(-1)
     currentStrokeIndex = 0;
+    fetchAllGolfCourseData(courseName);
     roundViewUpdate();
     layerDeleteAll()
     saveData()
@@ -1109,6 +1117,7 @@ function handleLoad() {
     mapViewCreate("mapid");
     clubStrokeViewCreate(clubReadAll(), document.getElementById("clubStrokeCreateContainer"));
     loadData();
+    fetchGolfCourseData(round.course);
     holeSelectViewCreate(document.getElementById('holeSelector'));
 }
 
@@ -1133,7 +1142,10 @@ function handleNewHoleClick() {
  * Handles the click event for starting a new round.
  */
 function handleRoundCreateClick() {
-    if (confirm("Are you sure you want to start a new round? All current data will be lost.")) {
+    const courseName = document.getElementById("courseName").value
+    if (!courseName) {
+        alert("Course name cannot be blank!");
+    } else if (confirm("Are you sure you want to start a new round? All current data will be lost.")) {
         roundCreate();
         holeSelectViewUpdate();
         rerender();
