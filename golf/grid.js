@@ -70,6 +70,10 @@ function fetchAllGolfCourseData(courseName, callback) {
  * @returns {Promise}
  */
 function fetchGolfCourseData(courseName, force, callback) {
+    if (!courseName) {
+        console.error("Refused to fetch from OSM with no courseName")
+        return Error("Must provide a courseName");
+    }
     let query = `[out: json];(way["leisure"="golf_course"]["name"~"${courseName}"];relation["leisure"="golf_course"]["name"~"${courseName}"];);out geom;`
     let storageKey = `courseData-${courseName}`;
     if (force || !readCache(storageKey)) {

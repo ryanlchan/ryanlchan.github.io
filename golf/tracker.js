@@ -543,7 +543,7 @@ function roundCreate() {
     round = { ...defaultRound(), course: courseName };
     currentHole = round.holes.at(-1)
     currentStrokeIndex = 0;
-    fetchAllGolfCourseData(courseName);
+    fetchAllGolfCourseData(courseName).then(() => mapRecenter("course"));
     roundViewUpdate();
     layerDeleteAll()
     saveData()
@@ -868,6 +868,36 @@ function mapViewCreate(mapid) {
         accessToken:
             "pk.eyJ1IjoicnlhbmxjaGFuIiwiYSI6ImNsamwyb2JwcDBuYzMzbHBpb2l0dHg2ODIifQ.vkFG7K0DrbHs5O1W0CIvzw", // replace with your Mapbox access token
     }).addTo(mapView);
+}
+
+/**
+ * Recenter the map on a point
+ * Options for key include "currentPosition", "currentHole", "course". Default to currentPosition.
+ * @param {String} key
+ */
+function mapRecenter(key) {
+    let flyoptions = {
+        animate: true,
+        duration: 0.33
+    }
+    if (key == "course") {
+        let course = getGolfCourseData(round.course);
+        if (course instanceof Error) {
+            return
+        } else {
+            let bbox = turf.bbox(course);
+            bbox.reverse();
+            mapView.flyToBounds([bbox.slice(0, 2), bbox.slice(2)], flyoptions)
+        }
+    } else if (key == "currentHole") {
+        if (currentHole.pin) {
+            mapView.flyTo([currentHole.pin.y, currentHole.pin.x], 18, flyoptions)
+        }
+    } else if (!key || key == "currentPosition") {
+        if (currentPositionEnabled && currentPosition) {
+            mapView.flyTo([currentPosition.coords.latitude, currentPosition.coords.longitude], 20, flyoptions)
+        }
+    }
 }
 
 /**
