@@ -198,8 +198,8 @@ function strokeMarkerDeactivate() {
 
         // Hide the "Set aim" button and remove the aim marker
         strokeMarkerAimCreateButton.classList.add("inactive")
-        if (layerRead('aim')) {
-            layerDelete('aim');
+        if (layerRead("active_aim")) {
+            layerDelete("active_aim");
         }
 
         // Hide sg grid
@@ -231,10 +231,17 @@ function strokeMarkerAimCreate(e) {
             crs: "EPSG:4326"
         }
     }
-    marker = markerCreate("aim", activeStrokeMarker.options.stroke.aim);
-    marker.on("dragend", sgGridUpdate);
-    activeStrokeMarker.on("dragend", sgGridUpdate);
+    marker = markerCreate("active_aim", stroke.aim);
+    marker.bindTooltip((function () { return `${calculateDistance(stroke.start, stroke.aim).toFixed(2)}m` }), { permanent: true, direction: "top", offset: [-15, 0] })
     sgGridCreate();
+}
+
+function strokeMarkerAimUpdate() {
+    try {
+        layerRead("active_aim").getTooltip().update();
+    } catch (e) {
+        return;
+    }
 }
 
 function sgGridCreate() {
@@ -244,9 +251,9 @@ function sgGridCreate() {
     } else if (!currentHole.pin) {
         console.error("Pin not set, cannot create sg grid");
         return
-    } else if (layerRead("grid")) {
+    } else if (layerRead("active_grid")) {
         console.warn("Grid already exists, recreating");
-        layerDelete("grid");
+        layerDelete("active_grid");
     }
 
     let grid = sgGridCalculate(
@@ -270,12 +277,12 @@ function sgGridCreate() {
         return `SG: ${layer.feature.properties.strokesGained.toFixed(3)}
              Prob: ${(layer.feature.properties.probability * 100).toFixed(1)}%`;
     });
-    layerCreate('grid', gridLayer);
+    layerCreate("active_grid", gridLayer);
 }
 
 function sgGridDelete() {
-    if (layerRead("grid")) {
-        layerDelete("grid");
+    if (layerRead("active_grid")) {
+        layerDelete("active_grid");
     }
 }
 
@@ -429,10 +436,11 @@ function holeSelect(holeNum) {
         console.error(`Attempted to select hole ${holeNum} but does not exist!`);
     }
 
-    // Delete all hole-specific layers
+    // Delete all hole-specific layers and active states
+    strokeMarkerDeactivate();
     const allLayers = layerReadAll();
     for (let id in allLayers) {
-        if (id.includes("hole_")) {
+        if (id.includes("hole_") || id.includes("active_")) {
             layerDelete(id);
         }
     }
