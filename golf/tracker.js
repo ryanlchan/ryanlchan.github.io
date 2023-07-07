@@ -223,6 +223,7 @@ function strokeMarkerAimCreate(e) {
         console.error("Cannot add aim, no active stroke marker")
         return
     }
+    const stroke = activeStrokeMarker.options.stroke;
 
     if (e) {
         activeStrokeMarker.options.stroke.aim = {
@@ -274,8 +275,13 @@ function sgGridCreate() {
             }
         }
     }).bindPopup(function (layer) {
-        return `SG: ${layer.feature.properties.strokesGained.toFixed(3)}
-             Prob: ${(layer.feature.properties.probability * 100).toFixed(1)}%`;
+        const sg = layer.feature.properties.strokesGained;
+        const prob = (layer.feature.properties.probability * 100);
+        const er = erf(layer.feature.properties.distanceToAim, 0, activeStrokeMarker.options.stroke.dispersion)
+        const ptile = (1 - er) * 100;
+        return `SG: ${sg.toFixed(3)}
+            | Prob: ${prob.toFixed(1)}%
+            | ${ptile.toFixed(1)}%ile`;
     });
     layerCreate("active_grid", gridLayer);
 }
@@ -312,12 +318,21 @@ function strokeMarkerAimID(stroke) {
 }
 
 /**
+ * Create a unique ID for a Stroke SG grid
+ * @param {Object} stroke
+ * @returns {String}
+ */
+function strokeSgGridID(stroke) {
+    return `stroke_${stroke.index}_hole_${stroke.hole}_sg_grid`
+}
+
+/**
  * Return the tooltip text for a stroke marker
  * @param {Object} stroke 
  */
 function strokeTooltipText(stroke) {
     const club = stroke.club;
-    const distance = Math.round(strokeDistance(stroke) * 10) / 10; // jesus christ I cannot believe how dumb javascript is just let me round floats
+    const distance = strokeDistance(stroke).toFixed(1)
     return `${club} (${distance}m)`
 }
 
@@ -639,6 +654,7 @@ function markerCreate(name, coordinate, options) {
     options = { draggable: true, ...options }
     const marker = L.marker([coordinate.y, coordinate.x], options);
     marker.on("drag", handleMarkerDrag(marker, coordinate));
+    marker.on("dragend", (() => rerender("dragend")));
     layerCreate(name, marker)
     strokelineUpdate();
     return marker
@@ -1007,11 +1023,19 @@ function strokeMoveViewCreate(stroke, offset) {
 /**
  * Rerender key views based on volatile data
  */
-function rerender() {
-    roundViewUpdate();
-    strokelineUpdate();
-    strokeMarkerUpdate();
-    saveData();
+function rerender(type) {
+    // Render calls that can occur any time, high perf
+    if (!type) {
+        roundViewUpdate();
+        strokelineUpdate();
+        strokeMarkerUpdate();
+        strokeMarkerAimUpdate();
+        saveData();
+    }
+    // Render calls that should happen only after drags finish
+    if (type == "dragend") {
+        sgGridUpdate();
+    }
 }
 
 /**

@@ -40,6 +40,16 @@ function runTests() {
     console.log("Undoing test stack")
     actionStack = [...backup];
     handleUndoActionClick();
+
+    // Blue teebox on Rancho 1
+    const RANCHO_1_BLUE = [34.045387833581394, -118.4175638211316]
+    // Center of fairway on Rancho 1
+    const RANCHO_1_FAIRWAY = [34.0464857232968, -118.41542967255143]
+    // right flag on Rancho 1
+    const RANCHO_1_COG = [34.04684885, -118.41427055791367]
+    let hexGrid = sgGridCalculate(RANCHO_1_BLUE, RANCHO_1_FAIRWAY, RANCHO_1_COG, 1);
+    let wsg = hexGrid.features.reduce((sum, feature) => sum + feature.properties.weightedStrokesGained);
+    console.assert(Math.abs(wsg - 0.1) <= 0.05, "Failed to calculate weighted strokes gained");
 }
 
 function initTests() {

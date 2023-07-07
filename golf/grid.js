@@ -103,6 +103,7 @@ function probabilityGrid(grid, aimPoint, dispersionNumber) {
         const distance = turf.distance(turf.center(feature), aimPoint, { units: "kilometers" }) * 1000;
         let p = probability(dispersionNumber, distance);
         feature.properties.probability = p;
+        feature.properties.distanceToAim = distance
         total += p;
     });
     grid.features.forEach((feature) => {
@@ -158,14 +159,20 @@ function sgGridCalculate(startCoordinate, aimCoordinate, holeCoordinate, dispers
     return hexGrid;
 }
 
-// Blue teebox on Rancho 1
-const RANCHO_1_BLUE = [34.045387833581394, -118.4175638211316]
-// Center of fairway on Rancho 1
-const RANCHO_1_FAIRWAY = [34.0464857232968, -118.41542967255143]
-// right flag on Rancho 1
-const RANCHO_1_RIGHT_FLAG = [34.046794432521104, -118.41416477236325]
-const RANCHO_1_COG = [34.04684885, -118.41427055791367]
-const start = [34.0453989458967, -118.41754320137206]
-const aim = [34.04649461303403, -118.41540545614271]
-const pin = [34.04684885, -118.41427055791367]
-let hexGrid = sgGridCalculate(RANCHO_1_BLUE, RANCHO_1_FAIRWAY, RANCHO_1_COG, 1);
+function erf(x, mean, standardDeviation) {
+    const z = (x - mean) / (standardDeviation * Math.sqrt(2));
+    const t = 1 / (1 + 0.3275911 * Math.abs(z));
+    const a1 = 0.254829592;
+    const a2 = -0.284496736;
+    const a3 = 1.421413741;
+    const a4 = -1.453152027;
+    const a5 = 1.061405429;
+    return 1 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * Math.exp(-z * z);
+}
+
+function cdf(x, mean, standardDeviation) {
+    const erf = erf(x, mean, standardDeviation);
+    const z = (x - mean) / (standardDeviation * Math.sqrt(2));
+    const cdf = 0.5 * (1 + Math.sign(z) * erf);
+    return cdf;
+}
