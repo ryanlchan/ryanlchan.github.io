@@ -74,7 +74,15 @@ function fetchGolfCourseData(courseName, force, callback) {
         console.error("Refused to fetch from OSM with no courseName")
         return Error("Must provide a courseName");
     }
-    let query = `[out: json];(way["leisure"="golf_course"]["name"~"${courseName}"];relation["leisure"="golf_course"]["name"~"${courseName}"];);out geom;`
+    let query = `[out:json];
+area[name="${courseName}"][leisure=golf_course]->.golf_area;
+(
+    way(area.golf_area)[golf];
+    relation(area.golf_area)[golf];
+    way[name="${courseName}"][leisure=golf_course];
+    relation[name="${courseName}"][leisure=golf_course];
+);
+out geom;`
     let storageKey = `courseData-${courseName}`;
     if (force || !readCache(storageKey)) {
         return fetchOSMData(query, storageKey, callback);
