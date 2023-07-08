@@ -122,6 +122,7 @@ function strokeDistance(stroke) {
  * @param {Object} options - Marker options.
  */
 function strokeMarkerCreate(stroke, options) {
+    console.debug(`Creating stroke markers for stroke ${stroke.index}`);
     const coordinate = stroke.start;
     const icon = L.icon({
         iconUrl: "circle-ypad.png", // replace with the path to your flag icon
@@ -354,7 +355,7 @@ function strokeTooltipText(stroke) {
  * @param {Object} hole 
  */
 function strokelineCreate(hole) {
-    console.debug("Creating strokeline for hole " + hole.number)
+    console.debug("Creating stroke line for hole " + hole.number)
     let points = strokelinePoints(hole);
 
     // Only create polyline if there's more than one point
@@ -432,20 +433,6 @@ function strokelineID(hole) {
  */
 
 /**
- * Create a new hole
- */
-function holeCreate() {
-    if (currentHole.strokes.length > 0) {
-        undoCreate("holeCreate")
-        currentHole = { ...defaultCurrentHole(), number: round.holes.length + 1 };
-        round.holes.push(currentHole);
-        currentStrokeIndex = 0;
-    } else {
-        document.getElementById("error").innerText = "Current hole is empty, cannot create a new hole.";
-    }
-}
-
-/**
  * Select a new hole and update pointers/views to match
  * @param {Number} holeNum 
  */
@@ -470,30 +457,7 @@ function holeSelect(holeNum) {
     // Add all the layers of this new hole
     holeViewCreate(currentHole);
     rerender();
-}
-
-/**
- * Sets a pin at the current location.
- */
-function holePinCreate() {
-    if (!currentHole) {
-        return;
-    }
-    withLocation((position) => {
-        undoCreate("pinCreate");
-
-        currentHole.pin = {
-            x: position.coords.longitude,
-            y: position.coords.latitude,
-            crs: "EPSG:4326",
-        };
-        const id = holePinID(currentHole);
-        layerDelete(id)
-        pinMarkerCreate(currentHole);
-
-        // Rerender views
-        rerender();
-    });
+    mapRecenter("currentHole")
 }
 
 function holePinID(hole) {
@@ -505,6 +469,7 @@ function holePinID(hole) {
  * @param {Object} hole - The hole to add a pin for
  */
 function pinMarkerCreate(hole) {
+    console.debug("Creating pin marker for hole " + hole.number)
     const coordinate = hole.pin;
     const holeNum = hole.number
     const flagIcon = L.icon({
@@ -531,6 +496,7 @@ function pinMarkerCreate(hole) {
 
 /**
  * Create a new round and clear away all old data
+ * Tries to background fetch course data and will call #roundUpdateWithData after loaded
  */
 function roundCreate() {
     // Set undo point
@@ -541,12 +507,36 @@ function roundCreate() {
     // Reset all major data
     localStorage.removeItem("golfData");
     round = { ...defaultRound(), course: courseName };
-    currentHole = round.holes.at(-1)
+    currentHole = round.holes.at(0)
     currentStrokeIndex = 0;
-    fetchAllGolfCourseData(courseName).then(() => mapRecenter("course"));
+    layerDeleteAll();
+    fetchGolfCourseData(courseName).then(roundUpdateWithData);
+}
+
+function roundUpdateWithData(courseData) {
+    lines = courseData.features.filter((feature) => feature.properties.ref)
+    for (let line of lines) {
+        const number = parseInt(line.properties.ref);
+        const green = getGolfHoleGreen(round.course, number);
+        const cog = turf.center(green).geometry.coordinates;
+        const pin = {
+            x: cog[0],
+            y: cog[1],
+            crs: "EPSG:4326",
+        };
+        let hole = { ...defaultCurrentHole(), number: number, pin: pin };
+        if (line.properties.par) {
+            hole["par"] = parseInt(line.properties.par)
+        }
+        if (line.properties.handicap) {
+            hole["handicap"] = parseInt(line.properties.handicap)
+        }
+        round.holes[hole.number - 1] = { ...hole, ...round.holes[hole.number - 1] }
+    }
     roundViewUpdate();
-    layerDeleteAll()
-    saveData()
+    saveData();
+    holeSelectViewUpdate();
+    mapRecenter("course");
 }
 
 function defaultCurrentHole() {
@@ -638,11 +628,15 @@ function loadData() {
             holeViewCreate(hole);
         });
 
-        const lastHoleIndex = round.holes.length - 1;
-        if (lastHoleIndex >= 0) {
-            currentHole = round.holes[lastHoleIndex];
-            currentStrokeIndex = currentHole.strokes.length;
-        }
+        const lastHole = round.holes.reduce((acc, hole) => {
+            if (hole.strokes.length > 0) {
+                return hole.number;
+            } else {
+                return acc;
+            }
+        }, 1);
+        currentHole = round.holes[lastHole - 1];
+        currentStrokeIndex = currentHole.strokes.length;
     }
     rerender();
 }
@@ -847,6 +841,16 @@ function currentPositionRead() {
 }
 
 /**
+ * Dumb function to translate from 4 coord bbox to 2x2 latlong bbox
+ * @param {Array} turfbb
+ */
+function turfbbToleafbb(turfbb) {
+    bb = [...turfbb] // copy it so we're not destructive...
+    bb.reverse();
+    return [bb.slice(0, 2), bb.slice(2)];
+}
+
+/**
  * =======================
  * Views/Output formatting
  * =======================
@@ -885,16 +889,21 @@ function mapRecenter(key) {
         if (course instanceof Error) {
             return
         } else {
-            let bbox = turf.bbox(course);
-            bbox.reverse();
-            mapView.flyToBounds([bbox.slice(0, 2), bbox.slice(2)], flyoptions)
+            console.debug("Recentering on course")
+            mapView.flyToBounds(turfbbToleafbb(turf.bbox(course)), flyoptions)
         }
     } else if (key == "currentHole") {
-        if (currentHole.pin) {
+        let line = getGolfHoleLine(round.course, currentHole.number);
+        if (line) {
+            console.debug("Recentering on current hole")
+            mapView.flyToBounds(turfbbToleafbb(turf.bbox(line)), flyoptions)
+        } else if (currentHole.pin) {
+            console.debug("Recentering on current pin")
             mapView.flyTo([currentHole.pin.y, currentHole.pin.x], 18, flyoptions)
         }
     } else if (!key || key == "currentPosition") {
         if (currentPositionEnabled && currentPosition) {
+            console.debug("Recentering on current position")
             mapView.flyTo([currentPosition.coords.latitude, currentPosition.coords.longitude], 20, flyoptions)
         }
     }
@@ -906,16 +915,12 @@ function mapRecenter(key) {
  */
 function holeViewCreate(hole) {
     console.debug(`Rendering layers for hole ${hole.number}`)
-    console.debug(`Creating markers for hole ${hole.number}`);
     hole.strokes.forEach(function (stroke) {
-        console.debug(`Creating stroke markers for hole ${hole.number} stroke ${stroke.index}`);
         strokeMarkerCreate(stroke);
     });
     if (hole.pin) {
-        console.debug(`Creating pin markers for hole ${hole.number}`);
         pinMarkerCreate(hole);
     }
-    console.debug(`Creating stroke line for hole ${hole.number}`)
     strokelineCreate(hole);
 }
 
@@ -1006,7 +1011,14 @@ function updateStats() {
     const holeElement = document.getElementById("holeStats");
     const strokeElement = document.getElementById("strokeStats");
     if (currentHole) {
-        holeElement.innerText = `| ${currentHole.strokes.length} Strokes`;
+        let text = `| ${currentHole.strokes.length} Strokes`;
+        if (currentHole.par) {
+            text += ` | Par ${currentHole.par}`
+        }
+        if (currentHole.handicap) {
+            text += ` | Hcp ${currentHole.handicap}`
+        }
+        holeElement.innerText = text
         strokeElement.innerHTML = "";
         currentHole.strokes.forEach(function (stroke, index) {
             let distance = 0;
@@ -1147,7 +1159,7 @@ function handleLoad() {
     mapViewCreate("mapid");
     clubStrokeViewCreate(clubReadAll(), document.getElementById("clubStrokeCreateContainer"));
     loadData();
-    fetchGolfCourseData(round.course);
+    fetchGolfCourseData(round.course).then(() => mapRecenter("currentHole"));
     holeSelectViewCreate(document.getElementById('holeSelector'));
 }
 
@@ -1156,16 +1168,6 @@ function handleLoad() {
  */
 function handleStrokeAddClick() {
     clubStrokeViewToggle();
-}
-
-/**
- * Handles the click event for creating a new hole.
- */
-function handleNewHoleClick() {
-    holeCreate();
-    holeSelectViewUpdate();
-    holeSelect(currentHole.number);
-    rerender();
 }
 
 /**
@@ -1204,7 +1206,7 @@ function handleCopyToClipboardClick() {
 }
 
 function handleRecenterClick() {
-    mapRecenter("course");
+    mapRecenter("currentHole");
 }
 
 /**
@@ -1232,10 +1234,8 @@ function showError(error) {
 let strokeMarkerAimCreateButton = document.getElementById("strokeMarkerAimCreate")
 
 window.onload = handleLoad;
-document.getElementById("holePinCreate").addEventListener("click", holePinCreate);
 document.getElementById("strokeAdd").addEventListener("click", handleStrokeAddClick);
 document.getElementById("clubStrokeCreateContainerClose").addEventListener("click", clubStrokeViewToggle);
-document.getElementById("newHole").addEventListener("click", handleNewHoleClick);
 document.getElementById("roundCreate").addEventListener("click", handleRoundCreateClick);
 document.getElementById("toggleRound").addEventListener("click", handleToggleRoundClick);
 document.getElementById("copyToClipboard").addEventListener("click", handleCopyToClipboardClick);

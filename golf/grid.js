@@ -5,6 +5,10 @@
 const OVERPASS_URL = "https://overpass-api.de/api/interpreter";
 const NOMINATIM_URL = "https://nominatim.openstreetmap.org/search?q=";
 
+function wait(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function setCache(key, json) {
     localStorage.setItem(
         key,
@@ -23,7 +27,7 @@ function readCache(key) {
  * @param {Function} callback 
  * @returns {Promise}
  */
-function fetchOSMData(query, storageKey, callback) {
+function fetchOSMData(query, storageKey) {
     let opt = {
         method: "POST",
         mode: "cors",
@@ -33,6 +37,7 @@ function fetchOSMData(query, storageKey, callback) {
         },
         body: `data=${encodeURIComponent(query)}`
     };
+    console.debug("Querying for data from OSM under key " + storageKey)
     return fetch(OVERPASS_URL, opt)
         .then(response => {
             if (!response.ok) {
@@ -45,36 +50,26 @@ function fetchOSMData(query, storageKey, callback) {
             data = scrubOSMData(data)
             console.debug("Succesfully processed OSM polys, caching as " + storageKey)
             setCache(storageKey, data)
-            if (callback) {
-                callback(data);
-            }
+            return data
         });
 }
 
 /**
- * Precache all course data
- * @param {String} courseName 
- * @param {Function} callback 
- * @returns {Promise}
- */
-function fetchAllGolfCourseData(courseName, callback) {
-    let polys = fetchGolfCourseData(courseName);
-    return Promise.all([polys], callback);
-}
-
-/**
- * Precache course polys
+ * Async pull course polys using a promise
  * @param {String} courseName 
  * @param {Boolean} force set to true to force a rewrite of cached polys
  * @param {Function} callback
  * @returns {Promise}
  */
-function fetchGolfCourseData(courseName, force, callback) {
+function fetchGolfCourseData(courseName, force) {
     if (!courseName) {
         console.error("Refused to fetch from OSM with no courseName")
         return Error("Must provide a courseName");
     }
-    let query = `[out:json];
+    let storageKey = `courseData-${courseName}`;
+    let cache = readCache(storageKey);
+    if (force || !cache) {
+        let query = `[out:json];
 area[name="${courseName}"][leisure=golf_course]->.golf_area;
 (
     way(area.golf_area)[golf];
@@ -83,14 +78,17 @@ area[name="${courseName}"][leisure=golf_course]->.golf_area;
     relation[name="${courseName}"][leisure=golf_course];
 );
 out geom;`
-    let storageKey = `courseData-${courseName}`;
-    if (force || !readCache(storageKey)) {
-        return fetchOSMData(query, storageKey, callback);
+        return fetchOSMData(query, storageKey);
     } else {
-        return new Promise(() => setTimeout(callback, 0));
+        return Promise.resolve(cache);
     }
 }
 
+/**
+ * Synchronously pull course data
+ * @param {String} courseName
+ * @returns
+ */
 function getGolfCourseData(courseName) {
     // Check if the cache has it first
     let storageKey = `courseData-${courseName}`;
@@ -102,6 +100,71 @@ function getGolfCourseData(courseName) {
         console.warn("Course has no polys or not found");
         return Error("No data available");
     }
+}
+
+/**
+ * Get the reference playing line for a hole at a course
+ * @param {String} courseName 
+ * @param {Number} holeNumber 
+ * @returns {Feature} a single line feature
+ */
+function getGolfHoleLine(courseName, holeNumber) {
+    let data = getGolfCourseData(courseName);
+    if (data instanceof Error) {
+        // Data not ready, just reraise the error
+        return data;
+    }
+    return data
+        .features.map((feature) => {
+            if (feature.properties.ref && feature.properties.ref == holeNumber) return feature
+        }).filter((el) => el !== undefined)[0];
+}
+
+/**
+ * Get all polys that intersect with the reference playing line
+ * @param {String} courseName 
+ * @param {Number} holeNumber 
+ * @returns {FeatureCollection} 
+ */
+function getGolfHolePolys(courseName, holeNumber) {
+    let data = getGolfCourseData(courseName);
+    if (data instanceof Error) {
+        // Data not ready, just reraise the error
+        return data
+    }
+
+    // Get the reference line
+    let line = getGolfHoleLine(courseName, holeNumber);
+    if (!line) {
+        let msg = `No hole line found for course ${courseName} hole ${holeNumber}`
+        console.warn(msg)
+        return Error(msg);
+    }
+
+    // Filter for poly's that intersect this line
+    return turf.featureCollection(
+        data.features.reduce((acc, feature) => {
+            if (turf.booleanIntersects(line, feature)) acc.push(feature);
+            return acc
+        }, [])
+    );
+}
+
+/**
+ * Get greens that intersect a single hole's reference playing line
+ * @param {String} courseName 
+ * @param {Number} holeNumber 
+ * @returns {FeatureCollection}
+ */
+function getGolfHoleGreen(courseName, holeNumber) {
+    let data = getGolfHolePolys(courseName, holeNumber);
+    if (data instanceof Error) {
+        // Data not ready, just reraise the error
+        return data
+    }
+    return turf.featureCollection(
+        data.features.filter((feature) => feature.properties.terrainType == "green")
+    )
 }
 
 function scrubOSMData(geojson) {
