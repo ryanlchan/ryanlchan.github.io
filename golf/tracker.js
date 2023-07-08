@@ -286,11 +286,13 @@ function sgGridCreate() {
             }
         }
     }).bindPopup(function (layer) {
-        const sg = layer.feature.properties.strokesGained;
-        const prob = (layer.feature.properties.probability * 100);
-        const er = erf(layer.feature.properties.distanceToAim, 0, activeStrokeMarker.options.stroke.dispersion)
+        const props = layer.feature.properties;
+        const sg = props.strokesGained;
+        const prob = (props.probability * 100);
+        const er = erf(props.distanceToAim, 0, activeStrokeMarker.options.stroke.dispersion)
         const ptile = (1 - er) * 100;
         return `SG: ${sg.toFixed(3)}
+            | ${props.terrainType}
             | Prob: ${prob.toFixed(1)}%
             | ${ptile.toFixed(1)}%ile`;
     });
@@ -819,20 +821,86 @@ function calculateDistance(coord1, coord2) {
  * @param {*} force set to true to force retrieving a fresh location
  */
 function withLocation(callback, force) {
+    getLocation().then(callback, showError)
+    navigator.geolocation.getCurrentPosition(callback, showError);
+}
+/**
+ * Get the user's location from browser or cache
+ * @returns {Promise} resolves with a GeolocationPosition
+ */
+function getLocation(force) {
     // If location is not yet tracked, turn on BG tracking + force refresh
     if (!(currentPositionEnabled)) {
-        currentPositionUpdate()
-        force = true
+        currentPositionUpdate();
+        force = true;
     }
-    const position = currentPositionRead();
-    if (position && !(force)) {
-        callback(position);
-    } else if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(callback, showError);
-    }
-    else {
-        document.getElementById("error").innerText = "Geolocation is not supported by this browser.";
-    }
+    return new Promise((resolve, reject) => {
+        const position = currentPositionRead();
+        if (position && !(force)) {
+            resolve(position);
+        } else if (!navigator.geolocation) {
+            // Create a custom position error
+            let e = new Error("Geolocation is not supported by this browser.");
+            e.code = 2;
+            e.POSITION_UNAVAILABLE = 2;
+            reject(e);
+        } else {
+            navigator.geolocation.getCurrentPosition(resolve, reject);
+        }
+    });
+}
+
+/**
+ * Get either the user's location in a given bound or ask them to click
+ * @param {FeatureCollection} bound
+ * @returns {Promise} resolves with a GeolocationPosition-ish
+ */
+function getLocationWithin(bound) {
+    return getLocationIf((position) => {
+        const point = turf.point([position.coords.longitude, position.coords.latitude])
+        return turf.booleanWithin(point, bound)
+    });
+}
+
+/**
+ * Get either the user's location in the map or ask them to click
+ * Only useful because polygonizing the map for turf is a pain
+ * @returns {Promise} resolves with a GeolocationPosition-ish
+ */
+function getLocationOnMap() {
+    return getLocationIf((position) => {
+        const userLatLng = L.latLng(position.coords.latitude, position.coords.longitude);
+        return mapView.getBounds().contains(userLatLng)
+    });
+}
+
+/**
+ * Get either the user's location within some condition or ask them to click
+ * The condition function will be called with the GeolocationPosition, should
+ * return True to accept the geolocation or False to ask for a click.
+ * @param {Function} condition
+ * @returns {Promise} resolves with a GeolocationPosition-ish
+ */
+function getLocationIf(condition) {
+    return new Promise((resolve, reject) => {
+        getLocation().then((position) => {
+            if (condition(position)) {
+                resolve(location);
+            } else {
+                document.getElementById("error").innerText = "You are too far away, click the map to set location";
+                mapView.on('click', (e) => {
+                    const clickPosition = {
+                        coords: {
+                            latitude: e.latlng.lat,
+                            longitude: e.latlng.lng,
+                        }
+                    }
+                    document.getElementById("error").innerText = ""
+                    resolve(clickPosition);
+                })
+            }
+        }).catch(reject);
+    });
 }
 
 /**
@@ -1134,9 +1202,9 @@ function clubStrokeViewCreate(clubs, targetElement) {
  */
 function clubStrokeCreateCallback(club) {
     return (() => {
-        withLocation((position) => {
+        clubStrokeViewToggle();
+        getLocationOnMap().then((position) => {
             clubStrokeCreate(position, club);
-            clubStrokeViewToggle();
         });
     });
 }
