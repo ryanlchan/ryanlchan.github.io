@@ -218,7 +218,16 @@ function presortTerrain(collection) {
 
     // Sort the features based on the priority of the terrains
     collection.features.sort((a, b) => {
-        return terrainPriority.indexOf(a.properties.terrainType) - terrainPriority.indexOf(b.properties.terrainType);
+        let aPriority = terrainPriority.indexOf(a.properties.terrainType);
+        let bPriority = terrainPriority.indexOf(b.properties.terrainType);
+        // If terrainType is not in the terrainPriority array, set it to highest index+1
+        if (aPriority === -1) {
+            aPriority = terrainPriority.length;
+        }
+        if (bPriority === -1) {
+            bPriority = terrainPriority.length;
+        }
+        return aPriority - bPriority;
     });
     return collection
 }
@@ -227,6 +236,8 @@ function findBoundaries(collection) {
     return turf.featureCollection(collection.features.reduce((acc, feature) => {
         if (feature.properties.leisure == "golf_course") {
             return acc.concat(feature);
+        } else {
+            return acc;
         }
     }, []));
 }

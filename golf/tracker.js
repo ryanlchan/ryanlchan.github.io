@@ -23,7 +23,7 @@ let activeStrokeMarker;
 
 /** 
  * Shows the current position on the map and logs it as a stroke.
- * @param {Position} position - The current geolocation position.
+ * @param {GeolocationPosition} position - The current geolocation position.
  */
 function strokeCreate(position, options = {}) {
     // set an undo point 
@@ -74,6 +74,9 @@ function strokeDelete(holeNumber, strokeIndex) {
 
         // Reindex remaining strokes
         hole.strokes.forEach((stroke, index) => stroke.index = index);
+
+        // Reset stroke index
+        currentStrokeIndex = hole.strokes.length;
 
         // Rerender views
         rerender();
@@ -1168,6 +1171,7 @@ function handleLoad() {
  */
 function handleStrokeAddClick() {
     clubStrokeViewToggle();
+    strokeMarkerDeactivate();
 }
 
 /**
