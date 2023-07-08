@@ -210,7 +210,7 @@ function strokeMarkerDeactivate() {
         sgGridDelete();
 
         // Delete deactivation clicks
-        mapView.removeEventListener("click", strokeMarkerDeactivate)
+        mapView.removeEventListener("click", strokeMarkerDeactivate);
     }
 }
 
@@ -284,7 +284,8 @@ function sgGridCreate() {
                 fillColor: colorscale(feature.properties.strokesGained).hex(),
                 fillOpacity: clip(feature.properties.probability / alphamid * 0.2, 0.1, 0.7)
             }
-        }
+        },
+        grid: grid
     }).bindPopup(function (layer) {
         const props = layer.feature.properties;
         const sg = props.strokesGained;
@@ -293,13 +294,15 @@ function sgGridCreate() {
         const ptile = (1 - er) * 100;
         return `SG: ${sg.toFixed(3)}
             | ${props.terrainType}
-            | Prob: ${prob.toFixed(1)}%
+            | Prob: ${prob.toFixed(2)}%
             | ${ptile.toFixed(1)}%ile`;
     });
     layerCreate("active_grid", gridLayer);
+    aimStatsCreate();
 }
 
 function sgGridDelete() {
+    aimStatsDelete();
     if (layerRead("active_grid")) {
         layerDelete("active_grid");
     }
@@ -618,7 +621,6 @@ function saveData() {
         "golfData",
         JSON.stringify({ ...round })
     );
-    updateStats();
 }
 
 /**
@@ -1078,7 +1080,7 @@ function roundViewUpdate() {
 /**
  * Updates the statistics information on the page.
  */
-function updateStats() {
+function holeStatsUpdate() {
     const holeElement = document.getElementById("holeStats");
     const strokeElement = document.getElementById("strokeStats");
     if (currentHole) {
@@ -1108,6 +1110,49 @@ function updateStats() {
         holeElement.innerText = "";
         strokeElement.innerHTML = "";
     }
+}
+
+/**
+ * Update aim-specific advanced stats
+ */
+function aimStatsUpdate() {
+    const el = document.getElementById("aimStats");
+    const layer = layerRead("active_grid")
+    if (!layer) {
+        return; // No grid to load
+    }
+    const grid = layer.options.grid;
+
+    // Calculate stats
+    const stroke = activeStrokeMarker.options.stroke;
+    const hole = round.holes[stroke.hole - 1];
+    const wsg = grid.properties.weightedStrokesGained;
+    const sr = grid.properties.strokesRemainingStart;
+    const sa = currentHole.strokes.length - stroke.index - 1;
+    let srn = 0;
+    if (sa > 0) {
+        let nextStart = currentHole.strokes[stroke.index + 1].start;
+        let startPoint = turf.point([nextStart.x, nextStart.y]);
+        let pinCoord = [hole.pin.x, hole.pin.y];
+        srn = calculateStrokesRemainingFrom(startPoint, pinCoord, round.course);
+    }
+    const sga = sr - srn - 1;
+
+    let text = `SG Aim ${wsg.toFixed(3)} | SGa ${sga.toFixed(3)} | SRe ${sr.toFixed(3)}`;
+    text += "<hr/>";
+    el.innerHTML = text;
+}
+
+function aimStatsCreate() {
+    const el = document.getElementById("aimStats");
+    el.classList.remove("inactive");
+    aimStatsUpdate();
+}
+
+function aimStatsDelete() {
+    const el = document.getElementById("aimStats");
+    el.classList.add("inactive");
+
 }
 
 /**
@@ -1151,11 +1196,13 @@ function rerender(type) {
         strokelineUpdate();
         strokeMarkerUpdate();
         strokeMarkerAimUpdate();
+        holeStatsUpdate();
         saveData();
     }
     // Render calls that should happen only after drags finish
     if (type == "dragend") {
         sgGridUpdate();
+        aimStatsUpdate();
     }
 }
 

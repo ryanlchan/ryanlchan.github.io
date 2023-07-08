@@ -319,7 +319,6 @@ function sgGridCalculate(startCoordinate, aimCoordinate, holeCoordinate, dispers
         // If no data currently available, reraise error to caller
         return golfCourseData;
     }
-    presortTerrain(golfCourseData);
     let startPoint = turf.flip(turf.point(startCoordinate));
     let aimPoint = turf.flip(turf.point(aimCoordinate));
     let holePoint = turf.flip(turf.point(holeCoordinate));
@@ -337,11 +336,36 @@ function sgGridCalculate(startCoordinate, aimCoordinate, holeCoordinate, dispers
     probabilityGrid(hexGrid, aimPoint, dispersionNumber);
     calculateStrokesGained(hexGrid, holePoint, strokesRemainingStart, golfCourseData);
 
-    let totalWeightedStrokesGained = hexGrid.features.reduce((sum, feature) => sum + feature.properties.weightedStrokesGained, 0);
+    let weightedStrokesGained = hexGrid.features.reduce((sum, feature) => sum + feature.properties.weightedStrokesGained, 0);
 
-    console.log('Total Weighted Strokes Gained:', totalWeightedStrokesGained);
+    console.log('Total Weighted Strokes Gained:', weightedStrokesGained);
+    properties = {
+        strokesRemainingStart: strokesRemainingStart,
+        distanceToHole: distanceToHole,
+        weightedStrokesGained: weightedStrokesGained
+    }
+    hexGrid.properties = properties
 
     return hexGrid;
+}
+
+/**
+ * Given a geographic feature, calculate strokes remaining from its center
+ * @param {Feature} feature the geographic feature to calculate from
+ * @param {Array} holeCoordinate an array containing [lat, long] coordinates in WGS84
+ * @param {string} courseName the course name to get polygons for
+ * @returns {Number} estimated strokes remaining
+ */
+function calculateStrokesRemainingFrom(feature, holeCoordinate, courseName) {
+    let golfCourseData = getGolfCourseData(courseName);
+    if (golfCourseData instanceof Error) {
+        // If no data currently available, reraise error to caller
+        return golfCourseData;
+    }
+    const center = turf.center(feature);
+    const distanceToHole = turf.distance(center, holeCoordinate, { units: "kilometers" }) * 1000;
+    const terrainType = findTerrainType(center, golfCourseData);
+    return calculateStrokesRemaining(distanceToHole, terrainType);
 }
 
 /**
