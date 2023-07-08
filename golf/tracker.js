@@ -1203,6 +1203,10 @@ function handleCopyToClipboardClick() {
     navigator.clipboard.writeText(document.getElementById("locationData").textContent);
 }
 
+function handleRecenterClick() {
+    mapRecenter("course");
+}
+
 /**
  * Shows an error message based on the geolocation error code.
  * @param {PositionError} error - The geolocation error object.
@@ -1236,4 +1240,5 @@ document.getElementById("roundCreate").addEventListener("click", handleRoundCrea
 document.getElementById("toggleRound").addEventListener("click", handleToggleRoundClick);
 document.getElementById("copyToClipboard").addEventListener("click", handleCopyToClipboardClick);
 document.getElementById("undoAction").addEventListener("click", handleUndoActionClick);
+document.getElementById("recenter").addEventListener("click", handleRecenterClick);
 strokeMarkerAimCreateButton.addEventListener('click', handleStrokeMarkerAimCreateClick);
